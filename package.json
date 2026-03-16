@@ -1,5 +1,5 @@
 {
-  "name": "@asoldi/client-cms",
+  "name": "@damianhch/client-cms",
   "version": "1.0.0",
   "description": "Client CMS for Asoldi client sites: users, ecommerce (name/price/image), hub-driven features. Mount at /api/cms, route /admin to ClientCMS.",
   "type": "module",
@@ -29,6 +29,9 @@
     "lucide-react": "^0.546.0"
   },
   "devDependencies": {},
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Damianhch/website-cms.git"

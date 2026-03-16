@@ -1,0 +1,39 @@
+{
+  "name": "@asoldi/client-cms",
+  "version": "1.0.0",
+  "description": "Client CMS for Asoldi client sites: users, ecommerce (name/price/image), hub-driven features. Mount at /api/cms, route /admin to ClientCMS.",
+  "type": "module",
+  "main": "server/routes.js",
+  "exports": {
+    ".": "./server/routes.js",
+    "./ClientCMS": "./client/ClientCMS.jsx"
+  },
+  "files": [
+    "server",
+    "client",
+    "README.md",
+    "docs"
+  ],
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19",
+    "react-router-dom": "^6 || ^7",
+    "react-helmet-async": "^3",
+    "express": "^4"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "lucide-react": "^0.546.0"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Damianhch/website-cms.git"
+  },
+  "keywords": ["cms", "asoldi", "admin", "ecommerce", "hub"],
+  "author": "",
+  "license": "UNLICENSED"
+}

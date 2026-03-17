@@ -42,6 +42,8 @@ export function ClientCMS() {
   const [userForm, setUserForm] = useState({ username: '', password: '' });
   const [productForm, setProductForm] = useState({ name: '', price: '', imageUrl: '' });
   const [imageUploading, setImageUploading] = useState(false);
+  const [imageDragOver, setImageDragOver] = useState(false);
+  const imageInputRef = React.useRef(null);
   const [editingId, setEditingId] = useState(null);
   const [editPassword, setEditPassword] = useState('');
   const [editingProductId, setEditingProductId] = useState(null);
@@ -180,8 +182,7 @@ export function ClientCMS() {
     }
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
+  const uploadImageFile = async (file) => {
     if (!file || !file.type.startsWith('image/')) return;
     setImageUploading(true);
     try {
@@ -200,9 +201,28 @@ export function ClientCMS() {
       setProductForm((f) => ({ ...f, imageUrl: data.url || '' }));
     } finally {
       setImageUploading(false);
-      e.target.value = '';
     }
   };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) uploadImageFile(file);
+    e.target.value = '';
+  };
+
+  const handleImageDrop = (e) => {
+    e.preventDefault();
+    setImageDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) uploadImageFile(file);
+  };
+
+  const handleImageDragOver = (e) => {
+    e.preventDefault();
+    setImageDragOver(true);
+  };
+
+  const handleImageDragLeave = () => setImageDragOver(false);
 
   const handleAddProduct = async (e) => {
     e.preventDefault();
@@ -422,19 +442,37 @@ export function ClientCMS() {
                   <div>
                     <label className="block text-xs text-gray-400 mb-1">Image</label>
                     <input
+                      ref={imageInputRef}
                       type="file"
                       accept="image/*"
                       onChange={handleImageUpload}
                       disabled={imageUploading}
-                      className="w-full text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#FF5B00] file:text-white file:font-medium file:cursor-pointer"
+                      className="hidden"
                     />
-                    {imageUploading && <p className="text-gray-500 text-sm mt-1">Uploading…</p>}
-                    {productForm.imageUrl && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <img src={productForm.imageUrl} alt="" className="w-16 h-16 object-cover rounded" />
-                        <button type="button" onClick={() => setProductForm((f) => ({ ...f, imageUrl: '' }))} className="text-xs text-gray-400 hover:text-white">Remove</button>
-                      </div>
-                    )}
+                    <div
+                      onDragOver={handleImageDragOver}
+                      onDragLeave={handleImageDragLeave}
+                      onDrop={handleImageDrop}
+                      onClick={() => imageInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${imageDragOver ? 'border-[#FF5B00] bg-[#FF5B00]/10' : 'border-white/20 hover:border-white/40 bg-[#1a1a1a]/50'}`}
+                    >
+                      {imageUploading ? (
+                        <p className="text-gray-400">Uploading…</p>
+                      ) : productForm.imageUrl ? (
+                        <div className="flex items-center justify-center gap-3">
+                          <img src={productForm.imageUrl} alt="" className="w-20 h-20 object-cover rounded" />
+                          <div className="text-left">
+                            <p className="text-white text-sm">Image added</p>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setProductForm((f) => ({ ...f, imageUrl: '' })); }} className="text-xs text-[#FF5B00] hover:underline mt-1">Remove</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-gray-400 text-sm">Drag image here or click to browse</p>
+                          <p className="text-gray-500 text-xs mt-1">PNG, JPG, WebP, etc.</p>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <button type="submit" disabled={loading || !productForm.name.trim()} className="px-4 py-2 rounded-lg bg-[#FF5B00] text-white font-medium hover:bg-[#e55200] disabled:opacity-50">Add product</button>
                 </form>

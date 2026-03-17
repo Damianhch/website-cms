@@ -40,7 +40,8 @@ export function ClientCMS() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [userForm, setUserForm] = useState({ username: '', password: '' });
-  const [productForm, setProductForm] = useState({ name: '', price: '', description: '', imageUrl: '' });
+  const [productForm, setProductForm] = useState({ name: '', price: '', imageUrl: '' });
+  const [imageUploading, setImageUploading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editPassword, setEditPassword] = useState('');
   const [editingProductId, setEditingProductId] = useState(null);
@@ -179,6 +180,30 @@ export function ClientCMS() {
     }
   };
 
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+    setImageUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch(`${API}/upload`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.message || 'Upload failed');
+        return;
+      }
+      setProductForm((f) => ({ ...f, imageUrl: data.url || '' }));
+    } finally {
+      setImageUploading(false);
+      e.target.value = '';
+    }
+  };
+
   const handleAddProduct = async (e) => {
     e.preventDefault();
     const name = productForm.name.trim();
@@ -191,7 +216,7 @@ export function ClientCMS() {
         body: JSON.stringify({
           name,
           price: Number(productForm.price) || 0,
-          description: productForm.description || '',
+          description: '',
           imageUrl: productForm.imageUrl || '',
         }),
       });
@@ -200,7 +225,7 @@ export function ClientCMS() {
         alert(data.message || 'Failed to create product');
         return;
       }
-      setProductForm({ name: '', price: '', description: '', imageUrl: '' });
+      setProductForm({ name: '', price: '', imageUrl: '' });
       fetchProducts();
     } finally {
       setLoading(false);
@@ -369,7 +394,7 @@ export function ClientCMS() {
           {tab === 'ecommerce' && (
             <div className="max-w-4xl">
               <h1 className="text-2xl font-bold text-white mb-6">Ecommerce</h1>
-              <p className="text-gray-400 text-sm mb-6">Products stored in this site’s data (e.g. data/cms/products.json). Add name, price, description, image URL.</p>
+              <p className="text-gray-400 text-sm mb-6">Add products: name, price, and image. Only visible when Ecommerce is enabled for this site in the hub.</p>
               <div className="rounded-xl bg-[#2a2a2a] border border-white/10 p-6 mb-8">
                 <h2 className="text-lg font-medium text-white mb-4">Add product</h2>
                 <form onSubmit={handleAddProduct} className="space-y-4">
@@ -395,24 +420,21 @@ export function ClientCMS() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-400 mb-1">Description</label>
-                    <textarea
-                      value={productForm.description}
-                      onChange={(e) => setProductForm((f) => ({ ...f, description: e.target.value }))}
-                      placeholder="Optional"
-                      rows={2}
-                      className="w-full px-4 py-2 rounded-lg bg-[#1a1a1a] border border-white/20 text-white placeholder-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Image URL</label>
+                    <label className="block text-xs text-gray-400 mb-1">Image</label>
                     <input
-                      type="url"
-                      value={productForm.imageUrl}
-                      onChange={(e) => setProductForm((f) => ({ ...f, imageUrl: e.target.value }))}
-                      placeholder="https://..."
-                      className="w-full px-4 py-2 rounded-lg bg-[#1a1a1a] border border-white/20 text-white placeholder-gray-500"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      disabled={imageUploading}
+                      className="w-full text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#FF5B00] file:text-white file:font-medium file:cursor-pointer"
                     />
+                    {imageUploading && <p className="text-gray-500 text-sm mt-1">Uploading…</p>}
+                    {productForm.imageUrl && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <img src={productForm.imageUrl} alt="" className="w-16 h-16 object-cover rounded" />
+                        <button type="button" onClick={() => setProductForm((f) => ({ ...f, imageUrl: '' }))} className="text-xs text-gray-400 hover:text-white">Remove</button>
+                      </div>
+                    )}
                   </div>
                   <button type="submit" disabled={loading || !productForm.name.trim()} className="px-4 py-2 rounded-lg bg-[#FF5B00] text-white font-medium hover:bg-[#e55200] disabled:opacity-50">Add product</button>
                 </form>

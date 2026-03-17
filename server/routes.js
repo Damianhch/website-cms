@@ -1,10 +1,23 @@
 import express from 'express';
 import { createHmac } from 'crypto';
+import { existsSync, mkdirSync } from 'fs';
+import { join, resolve } from 'path';
+import multer from 'multer';
 import { createStore } from './store.js';
 
 export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', adminSecret = process.env.CMS_ADMIN_SECRET || process.env.ADMIN_SECRET || 'change-me' }) {
   const router = express.Router();
   const store = createStore(dataPath);
+
+  const uploadsDir = resolve(dataPath, 'cms', 'uploads');
+  if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+  const upload = multer({
+    storage: multer.diskStorage({
+      destination: (_req, _file, cb) => cb(null, uploadsDir),
+      filename: (_req, file, cb) => cb(null, `${Date.now()}-${(file.originalname || 'file').replace(/[^a-zA-Z0-9.-]/g, '_')}`),
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+  });
 
   function signToken(payload) {
     const data = JSON.stringify(payload);
@@ -135,6 +148,14 @@ export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', 
     }
     const token = signToken({ role: 'employee', userId: result.user.id, at: Date.now() });
     res.json({ token, user: result.user });
+  });
+
+  router.use('/uploads', express.static(uploadsDir));
+
+  router.post('/upload', adminAuth, upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+    const url = `${req.baseUrl}/uploads/${req.file.filename}`;
+    res.json({ url });
   });
 
   router.get('/products', adminAuth, (req, res) => {

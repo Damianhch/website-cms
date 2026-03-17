@@ -1,6 +1,6 @@
 {
   "name": "@damianhch/website-cms",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Client CMS for Asoldi client sites: users, ecommerce (name/price/image), hub-driven features. Mount at /api/cms, route /admin to ClientCMS.",
   "type": "module",
   "main": "server/routes.js",
@@ -26,7 +26,8 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "lucide-react": "^0.546.0"
+    "lucide-react": "^0.546.0",
+    "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {},
   "publishConfig": {

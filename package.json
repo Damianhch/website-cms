@@ -1,6 +1,6 @@
 {
-  "name": "@damianhch/client-cms",
-  "version": "1.0.0",
+  "name": "@damianhch/website-cms",
+  "version": "1.0.1",
   "description": "Client CMS for Asoldi client sites: users, ecommerce (name/price/image), hub-driven features. Mount at /api/cms, route /admin to ClientCMS.",
   "type": "module",
   "main": "server/routes.js",

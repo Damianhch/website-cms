@@ -46,6 +46,8 @@ app.use(
     hubUrl: process.env.CMS_HUB_URL,
     siteKey: process.env.CMS_SITE_KEY,
     dataPath: process.env.CMS_DATA_PATH || './data',
+    pages: [{ path: '/', label: 'Home' }, { path: '/menu', label: 'Menu' }, /* ... */],
+    siteUrl: process.env.SITE_URL, // optional; defaults to request origin
   })
 );
 

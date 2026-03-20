@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag } from 'lucide-react';
+import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag, FileText, ExternalLink } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 
 const API = '/api/cms';
@@ -36,6 +36,8 @@ export function ClientCMS() {
   const [tab, setTab] = useState('users');
   const [features, setFeatures] = useState(DEFAULT_FEATURES);
   const [siteName, setSiteName] = useState('');
+  const [pages, setPages] = useState([]);
+  const [siteUrl, setSiteUrl] = useState('');
   const [users, setUsers] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -76,6 +78,8 @@ export function ClientCMS() {
       .then((data) => {
         if (data?.features) setFeatures(data.features);
         if (data?.name) setSiteName(data.name);
+        if (Array.isArray(data?.pages)) setPages(data.pages);
+        if (data?.siteUrl) setSiteUrl(data.siteUrl);
       })
       .catch(() => setFeatures(DEFAULT_FEATURES));
   }, []);
@@ -366,6 +370,15 @@ export function ClientCMS() {
             <p className="text-xs text-gray-400 mt-1">Client CMS</p>
           </div>
           <nav className="flex-1 p-2">
+            {pages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTab('pages')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'pages' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
+              >
+                <FileText size={18} /> Pages
+              </button>
+            )}
             {features.users !== false && (
               <button
                 type="button"
@@ -405,6 +418,26 @@ export function ClientCMS() {
           </div>
         </aside>
         <main className="flex-1 ml-56 p-8">
+          {tab === 'pages' && (
+            <div className="max-w-4xl">
+              <h1 className="text-2xl font-bold text-white mb-2">Pages</h1>
+              <p className="text-gray-400 text-sm mb-6">Quick navigation to all pages on this site.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {pages.map((p) => (
+                  <a
+                    key={p.path}
+                    href={(siteUrl || window.location.origin) + (p.path.startsWith('/') ? p.path : '/' + p.path)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between rounded-xl bg-[#2a2a2a] border border-white/10 px-4 py-3 hover:border-[#FF5B00]/50 hover:bg-[#2a2a2a]/80 transition-colors group"
+                  >
+                    <span className="text-white font-medium">{p.label || p.path}</span>
+                    <ExternalLink size={16} className="text-gray-400 group-hover:text-[#FF5B00] flex-shrink-0 ml-2" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           {tab === 'analytics' && (
             <div className="max-w-4xl">
               <h1 className="text-2xl font-bold text-white mb-6">Analytics</h1>

@@ -5,7 +5,7 @@ import { join, resolve } from 'path';
 import multer from 'multer';
 import { createStore } from './store.js';
 
-export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', adminSecret = process.env.CMS_ADMIN_SECRET || process.env.ADMIN_SECRET || 'change-me' }) {
+export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', adminSecret = process.env.CMS_ADMIN_SECRET || process.env.ADMIN_SECRET || 'change-me', pages = [], siteUrl } = {}) {
   const router = express.Router();
   const store = createStore(dataPath);
 
@@ -58,20 +58,19 @@ export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', 
   ensureAdmin();
 
   router.get('/config', async (req, res) => {
-    if (!siteKey || !hubUrl) {
-      return res.json({ features: { users: true, analytics: false, ecommerce: false }, name: 'Site' });
-    }
-    try {
-      const base = hubUrl.replace(/\/$/, '');
-      const r = await fetch(`${base}/api/hub/site-config?site_key=${encodeURIComponent(siteKey)}`);
-      if (!r.ok) {
-        return res.json({ features: { users: true, analytics: false, ecommerce: false }, name: 'Site' });
+    let data = { features: { users: true, analytics: false, ecommerce: false }, name: 'Site' };
+    if (siteKey && hubUrl) {
+      try {
+        const base = hubUrl.replace(/\/$/, '');
+        const r = await fetch(`${base}/api/hub/site-config?site_key=${encodeURIComponent(siteKey)}`);
+        if (r.ok) data = await r.json();
+      } catch {
+        /* use default */
       }
-      const data = await r.json();
-      res.json(data);
-    } catch {
-      res.json({ features: { users: true, analytics: false, ecommerce: false }, name: 'Site' });
     }
+    data.pages = Array.isArray(pages) ? pages : [];
+    data.siteUrl = siteUrl || (req.protocol + '://' + req.get('host'));
+    res.json(data);
   });
 
   router.post('/admin/login', async (req, res) => {

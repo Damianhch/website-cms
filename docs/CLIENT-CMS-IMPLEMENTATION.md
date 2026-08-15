@@ -14,14 +14,22 @@ Hub (Asoldi website repo)
 └── GET /api/hub/site-config?site_key=xxx → { features, name }
 ```
 
-- **Client data** (users, products, admin) is stored under `dataPath/cms/` on the **client’s** server (e.g. Hostinger). Not in the hub.
-- **Feature flags** are in the hub; this package only reads them via the config endpoint.
+- **Client data** (users, products, categories, admin) is stored under `dataPath/cms/` on the **client’s** server (e.g. Hostinger). Not in the hub.
+- **Feature flags and catalog type** are in the hub; this package only reads them via the config endpoint.
 
 ## Ecommerce
 
-- Products: `data/cms/products.json` (when using default store). Fields: `id`, `name`, `price`, `description`, `imageUrl`, `createdAt`.
-- Image is a URL for now; the client project can add file upload and save a URL.
-- To switch to a real DB (e.g. Hostinger MySQL), replace or extend the store in this package (or in the client project by overriding routes).
+Catalog type comes from the hub (`ecommerceCatalogType`: `menu` | `tiers` | `normal`).
+
+- Products: `data/cms/products.json`. Fields: `id`, `name`, `price`, `description`, `imageUrl`, `categoryId`, `allergens`, `subtitle`, `bullets`, `cta`, `sortOrder`, `createdAt`, `updatedAt`.
+- Categories: `data/cms/categories.json` (menu / normal only).
+- Public storefront read: `GET /api/cms/catalog` when ecommerce is enabled.
+- Images: upload to `data/cms/uploads/` or paste a URL.
+- Flat v1.0.x products (name/price/description/imageUrl) are migrated in place on first read.
+
+## Heartbeat
+
+`GET /api/cms/config` includes `packageVersion` and POSTs `/api/hub/heartbeat` so the hub can track last-seen CMS version per site.
 
 ## Publishing
 

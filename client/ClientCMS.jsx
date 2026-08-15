@@ -4,8 +4,9 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag } from 'lucide-react';
+import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag, Newspaper, Share2 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
+import { EcommercePanel } from './EcommercePanel.jsx';
 
 const API = '/api/cms';
 
@@ -26,7 +27,16 @@ function authHeaders() {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-const DEFAULT_FEATURES = { users: true, analytics: false, ecommerce: false };
+const DEFAULT_FEATURES = { users: true, analytics: false, ecommerce: false, blog: false, socialSync: false };
+
+function firstEnabledTab(features) {
+  if (features.users !== false) return 'users';
+  if (features.ecommerce) return 'ecommerce';
+  if (features.blog) return 'blog';
+  if (features.socialSync) return 'social';
+  if (features.analytics) return 'analytics';
+  return 'users';
+}
 
 export function ClientCMS() {
   const [loggedIn, setLoggedIn] = useState(null);
@@ -35,18 +45,13 @@ export function ClientCMS() {
   const [loginError, setLoginError] = useState('');
   const [tab, setTab] = useState('users');
   const [features, setFeatures] = useState(DEFAULT_FEATURES);
+  const [catalogType, setCatalogType] = useState('normal');
   const [siteName, setSiteName] = useState('');
   const [users, setUsers] = useState([]);
-  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [userForm, setUserForm] = useState({ username: '', password: '' });
-  const [productForm, setProductForm] = useState({ name: '', price: '', imageUrl: '' });
-  const [imageUploading, setImageUploading] = useState(false);
-  const [imageDragOver, setImageDragOver] = useState(false);
-  const imageInputRef = React.useRef(null);
   const [editingId, setEditingId] = useState(null);
   const [editPassword, setEditPassword] = useState('');
-  const [editingProductId, setEditingProductId] = useState(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -63,19 +68,18 @@ export function ClientCMS() {
     setUsers(await res.json());
   }, []);
 
-  const fetchProducts = useCallback(async () => {
-    const res = await fetch(`${API}/products`, { headers: authHeaders() });
-    if (res.status === 401) return;
-    if (!res.ok) return;
-    setProducts(await res.json());
-  }, []);
-
   useEffect(() => {
     fetch(`${API}/config`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.features) setFeatures(data.features);
+        const nextFeatures = data?.features ? { ...DEFAULT_FEATURES, ...data.features } : DEFAULT_FEATURES;
+        setFeatures(nextFeatures);
+        setCatalogType(data?.ecommerceCatalogType === 'menu' || data?.ecommerceCatalogType === 'tiers' ? data.ecommerceCatalogType : 'normal');
         if (data?.name) setSiteName(data.name);
+        setTab((current) => {
+          if (current === 'users' && nextFeatures.users === false) return firstEnabledTab(nextFeatures);
+          return current;
+        });
       })
       .catch(() => setFeatures(DEFAULT_FEATURES));
   }, []);
@@ -86,8 +90,10 @@ export function ClientCMS() {
       setLoggedIn(false);
       return;
     }
-    Promise.all([fetchUsers(), features.ecommerce ? fetchProducts() : Promise.resolve()]).then(() => setLoggedIn(true)).catch(() => setLoggedIn(false));
-  }, [fetchUsers, fetchProducts, features.ecommerce]);
+    fetchUsers()
+      .then(() => setLoggedIn(true))
+      .catch(() => setLoggedIn(false));
+  }, [fetchUsers]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -107,7 +113,6 @@ export function ClientCMS() {
       setToken(data.token);
       setLoggedIn(true);
       fetchUsers();
-      if (features.ecommerce) fetchProducts();
     } catch {
       setLoginError('Network error');
     } finally {
@@ -177,112 +182,6 @@ export function ClientCMS() {
         return;
       }
       fetchUsers();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const uploadImageFile = async (file) => {
-    if (!file || !file.type.startsWith('image/')) return;
-    setImageUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch(`${API}/upload`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: formData,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(data.message || 'Upload failed');
-        return;
-      }
-      setProductForm((f) => ({ ...f, imageUrl: data.url || '' }));
-    } finally {
-      setImageUploading(false);
-    }
-  };
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (file) uploadImageFile(file);
-    e.target.value = '';
-  };
-
-  const handleImageDrop = (e) => {
-    e.preventDefault();
-    setImageDragOver(false);
-    const file = e.dataTransfer?.files?.[0];
-    if (file) uploadImageFile(file);
-  };
-
-  const handleImageDragOver = (e) => {
-    e.preventDefault();
-    setImageDragOver(true);
-  };
-
-  const handleImageDragLeave = () => setImageDragOver(false);
-
-  const handleAddProduct = async (e) => {
-    e.preventDefault();
-    const name = productForm.name.trim();
-    if (!name) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/products`, {
-        method: 'POST',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          price: Number(productForm.price) || 0,
-          description: '',
-          imageUrl: productForm.imageUrl || '',
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Failed to create product');
-        return;
-      }
-      setProductForm({ name: '', price: '', imageUrl: '' });
-      fetchProducts();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateProduct = async (id, updates) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/products/${id}`, {
-        method: 'PUT',
-        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Update failed');
-        return;
-      }
-      setEditingProductId(null);
-      fetchProducts();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDeleteProduct = async (id) => {
-    if (!confirm('Delete this product?')) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/products/${id}`, { method: 'DELETE', headers: authHeaders() });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.message || 'Delete failed');
-        return;
-      }
-      fetchProducts();
     } finally {
       setLoading(false);
     }
@@ -375,15 +274,6 @@ export function ClientCMS() {
                 <Users size={18} /> Users
               </button>
             )}
-            {features.analytics && (
-              <button
-                type="button"
-                onClick={() => setTab('analytics')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'analytics' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
-              >
-                <BarChart3 size={18} /> Analytics
-              </button>
-            )}
             {features.ecommerce && (
               <button
                 type="button"
@@ -391,6 +281,33 @@ export function ClientCMS() {
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'ecommerce' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
               >
                 <ShoppingBag size={18} /> Ecommerce
+              </button>
+            )}
+            {features.blog && (
+              <button
+                type="button"
+                onClick={() => setTab('blog')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'blog' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
+              >
+                <Newspaper size={18} /> Blog
+              </button>
+            )}
+            {features.socialSync && (
+              <button
+                type="button"
+                onClick={() => setTab('social')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'social' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
+              >
+                <Share2 size={18} /> Social sync
+              </button>
+            )}
+            {features.analytics && (
+              <button
+                type="button"
+                onClick={() => setTab('analytics')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'analytics' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
+              >
+                <BarChart3 size={18} /> Analytics
               </button>
             )}
             <div className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium text-gray-400 opacity-70">
@@ -411,116 +328,22 @@ export function ClientCMS() {
               <p className="text-gray-400">Connect Google Analytics or Business Profile. Coming soon.</p>
             </div>
           )}
-          {tab === 'ecommerce' && (
+          {tab === 'blog' && (
             <div className="max-w-4xl">
-              <h1 className="text-2xl font-bold text-white mb-6">Ecommerce</h1>
-              <p className="text-gray-400 text-sm mb-6">Add products: name, price, and image. Only visible when Ecommerce is enabled for this site in the hub.</p>
-              <div className="rounded-xl bg-[#2a2a2a] border border-white/10 p-6 mb-8">
-                <h2 className="text-lg font-medium text-white mb-4">Add product</h2>
-                <form onSubmit={handleAddProduct} className="space-y-4">
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Name</label>
-                    <input
-                      type="text"
-                      value={productForm.name}
-                      onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))}
-                      placeholder="Product name"
-                      className="w-full px-4 py-2 rounded-lg bg-[#1a1a1a] border border-white/20 text-white placeholder-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Price</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={productForm.price}
-                      onChange={(e) => setProductForm((f) => ({ ...f, price: e.target.value }))}
-                      placeholder="0"
-                      className="w-full px-4 py-2 rounded-lg bg-[#1a1a1a] border border-white/20 text-white placeholder-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-400 mb-1">Image</label>
-                    <input
-                      ref={imageInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      disabled={imageUploading}
-                      className="hidden"
-                    />
-                    <div
-                      onDragOver={handleImageDragOver}
-                      onDragLeave={handleImageDragLeave}
-                      onDrop={handleImageDrop}
-                      onClick={() => imageInputRef.current?.click()}
-                      className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${imageDragOver ? 'border-[#FF5B00] bg-[#FF5B00]/10' : 'border-white/20 hover:border-white/40 bg-[#1a1a1a]/50'}`}
-                    >
-                      {imageUploading ? (
-                        <p className="text-gray-400">Uploading…</p>
-                      ) : productForm.imageUrl ? (
-                        <div className="flex items-center justify-center gap-3">
-                          <img src={productForm.imageUrl} alt="" className="w-20 h-20 object-cover rounded" />
-                          <div className="text-left">
-                            <p className="text-white text-sm">Image added</p>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); setProductForm((f) => ({ ...f, imageUrl: '' })); }} className="text-xs text-[#FF5B00] hover:underline mt-1">Remove</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-gray-400 text-sm">Drag image here or click to browse</p>
-                          <p className="text-gray-500 text-xs mt-1">PNG, JPG, WebP, etc.</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <button type="submit" disabled={loading || !productForm.name.trim()} className="px-4 py-2 rounded-lg bg-[#FF5B00] text-white font-medium hover:bg-[#e55200] disabled:opacity-50">Add product</button>
-                </form>
-              </div>
-              <div className="rounded-xl bg-[#2a2a2a] border border-white/10 overflow-hidden">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-white/10">
-                      <th className="px-4 py-3 text-gray-400 font-medium">Product</th>
-                      <th className="px-4 py-3 text-gray-400 font-medium">Price</th>
-                      <th className="px-4 py-3 text-gray-400 font-medium">Image</th>
-                      <th className="px-4 py-3 text-gray-400 font-medium w-32">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p) => (
-                      <tr key={p.id} className="border-b border-white/5">
-                        <td className="px-4 py-3 text-white">
-                          <div>{p.name}</div>
-                          {p.description && <div className="text-gray-400 text-sm mt-0.5">{p.description}</div>}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400">{p.price != null ? Number(p.price).toFixed(2) : '—'}</td>
-                        <td className="px-4 py-3">
-                          {p.imageUrl ? (
-                            <img src={p.imageUrl} alt="" className="w-12 h-12 object-cover rounded" />
-                          ) : (
-                            <span className="text-gray-500 text-sm">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {editingProductId === p.id ? (
-                            <button type="button" onClick={() => setEditingProductId(null)} className="text-xs text-gray-400">Cancel</button>
-                          ) : (
-                            <>
-                              <button type="button" onClick={() => setEditingProductId(p.id)} className="text-xs text-[#FF5B00] hover:underline mr-2">Edit</button>
-                              <button type="button" onClick={() => handleDeleteProduct(p.id)} className="text-xs text-red-400 hover:underline">Delete</button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {products.length === 0 && <p className="px-4 py-8 text-gray-400 text-center">No products yet.</p>}
-              </div>
+              <h1 className="text-2xl font-bold text-white mb-6">Blog</h1>
+              <p className="text-gray-400">Write and publish posts from this CMS. Coming soon.</p>
             </div>
           )}
-          {tab === 'users' && (
+          {tab === 'social' && (
+            <div className="max-w-4xl">
+              <h1 className="text-2xl font-bold text-white mb-6">Social sync</h1>
+              <p className="text-gray-400">Reviews and social media sync. Coming soon.</p>
+            </div>
+          )}
+          {tab === 'ecommerce' && features.ecommerce && (
+            <EcommercePanel catalogType={catalogType} authHeaders={authHeaders} loading={loading} setLoading={setLoading} />
+          )}
+          {tab === 'users' && features.users !== false && (
             <div className="max-w-4xl">
               <h1 className="text-2xl font-bold text-white mb-6">Users</h1>
               <p className="text-gray-400 text-sm mb-6">Staff logins for this site. Passwords are encrypted.</p>

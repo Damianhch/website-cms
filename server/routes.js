@@ -1,11 +1,54 @@
 import express from 'express';
 import { createHmac } from 'crypto';
-import { existsSync, mkdirSync } from 'fs';
-import { join, resolve } from 'path';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { createStore } from './store.js';
+import {
+  DEFAULT_FEATURES,
+  normalizeFeatures,
+  publicCategory,
+  publicProduct,
+  resolveCatalogType,
+} from './catalog.js';
 
-export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', adminSecret = process.env.CMS_ADMIN_SECRET || process.env.ADMIN_SECRET || 'change-me' }) {
+const PACKAGE_VERSION = (() => {
+  try {
+    const packagePath = join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+    return JSON.parse(readFileSync(packagePath, 'utf8')).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
+
+function fallbackConfig() {
+  return {
+    features: { ...DEFAULT_FEATURES },
+    name: 'Site',
+    id: null,
+    ecommerceCatalogType: null,
+    websitePlan: null,
+    desiredCmsVersion: null,
+    packageVersion: PACKAGE_VERSION,
+  };
+}
+
+function withPackageVersion(data) {
+  return {
+    ...fallbackConfig(),
+    ...data,
+    features: normalizeFeatures(data?.features || DEFAULT_FEATURES),
+    packageVersion: PACKAGE_VERSION,
+  };
+}
+
+export default function createCmsRoutes({
+  hubUrl,
+  siteKey,
+  dataPath = './data',
+  adminSecret = process.env.CMS_ADMIN_SECRET || process.env.ADMIN_SECRET || 'change-me',
+} = {}) {
   const router = express.Router();
   const store = createStore(dataPath);
 
@@ -55,23 +98,61 @@ export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', 
     next();
   }
 
-  ensureAdmin();
-
-  router.get('/config', async (req, res) => {
-    if (!siteKey || !hubUrl) {
-      return res.json({ features: { users: true, analytics: false, ecommerce: false }, name: 'Site' });
-    }
+  async function fetchHubConfig() {
+    if (!siteKey || !hubUrl) return fallbackConfig();
     try {
       const base = hubUrl.replace(/\/$/, '');
       const r = await fetch(`${base}/api/hub/site-config?site_key=${encodeURIComponent(siteKey)}`);
-      if (!r.ok) {
-        return res.json({ features: { users: true, analytics: false, ecommerce: false }, name: 'Site' });
-      }
+      if (!r.ok) return fallbackConfig();
       const data = await r.json();
-      res.json(data);
+      return withPackageVersion(data);
     } catch {
-      res.json({ features: { users: true, analytics: false, ecommerce: false }, name: 'Site' });
+      return fallbackConfig();
     }
+  }
+
+  function sendHeartbeat(req, config) {
+    if (!siteKey || !hubUrl) return;
+    const base = hubUrl.replace(/\/$/, '');
+    const host = req.get('host') || '';
+    const proto = (req.get('x-forwarded-proto') || req.protocol || 'https').split(',')[0].trim() || 'https';
+    const adminUrl = process.env.CMS_PUBLIC_URL
+      ? `${process.env.CMS_PUBLIC_URL.replace(/\/$/, '')}/admin`
+      : host
+        ? `${proto}://${host}/admin`
+        : '';
+    fetch(`${base}/api/hub/heartbeat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site_key: siteKey,
+        packageVersion: PACKAGE_VERSION,
+        adminUrl,
+        name: config?.name || '',
+      }),
+    }).catch(() => {});
+  }
+
+  ensureAdmin();
+
+  router.get('/config', async (req, res) => {
+    const config = await fetchHubConfig();
+    sendHeartbeat(req, config);
+    res.json(config);
+  });
+
+  router.get('/catalog', async (req, res) => {
+    const config = await fetchHubConfig();
+    if (!config.features.ecommerce) {
+      return res.status(404).json({ message: 'Ecommerce is not enabled' });
+    }
+    const catalogType = resolveCatalogType(config.ecommerceCatalogType);
+    res.json({
+      catalogType,
+      name: config.name,
+      categories: store.getAllCategories().map(publicCategory),
+      products: store.getAllProducts().map(publicProduct),
+    });
   });
 
   router.post('/admin/login', async (req, res) => {
@@ -158,20 +239,41 @@ export default function createCmsRoutes({ hubUrl, siteKey, dataPath = './data', 
     res.json({ url });
   });
 
-  router.get('/products', adminAuth, (req, res) => {
+  router.get('/categories', adminAuth, (_req, res) => {
+    res.json(store.getAllCategories());
+  });
+
+  router.post('/categories', adminAuth, (req, res) => {
+    const result = store.createCategory(req.body || {});
+    if (!result.ok) return res.status(400).json({ message: result.error });
+    res.status(201).json(result.category);
+  });
+
+  router.put('/categories/:id', adminAuth, (req, res) => {
+    const result = store.updateCategory(req.params.id, req.body || {});
+    if (!result.ok) return res.status(result.error === 'Category not found' ? 404 : 400).json({ message: result.error });
+    res.json(result.category);
+  });
+
+  router.delete('/categories/:id', adminAuth, (req, res) => {
+    const result = store.deleteCategory(req.params.id);
+    if (!result.ok) return res.status(404).json({ message: result.error });
+    res.json({ ok: true });
+  });
+
+  router.get('/products', adminAuth, (_req, res) => {
     res.json(store.getAllProducts());
   });
 
   router.post('/products', adminAuth, (req, res) => {
-    const { name, price, description, imageUrl } = req.body || {};
-    const result = store.createProduct({ name, price, description, imageUrl });
+    const result = store.createProduct(req.body || {});
     if (!result.ok) return res.status(400).json({ message: result.error });
     res.status(201).json(result.product);
   });
 
   router.put('/products/:id', adminAuth, (req, res) => {
     const result = store.updateProduct(req.params.id, req.body || {});
-    if (!result.ok) return res.status(404).json({ message: result.error });
+    if (!result.ok) return res.status(result.error === 'Product not found' ? 404 : 400).json({ message: result.error });
     res.json(result.product);
   });
 

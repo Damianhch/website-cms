@@ -1,12 +1,14 @@
-# @asoldi/client-cms
+# @damianhch/client-cms
 
-Client CMS for Asoldi client sites: **users**, **ecommerce** (name, price, description, image URL), and hub-driven feature flags. Install in any client project; mount at `/api/cms`, show UI at `/admin`.
+Client CMS for Asoldi client sites: **users**, **typed ecommerce** (menu / tiers / normal), and hub-driven feature flags (users, ecommerce, blog, social sync, analytics). Install in any client project; mount at `/api/cms`, show UI at `/admin`.
+
+Package version: **1.1.0**.
 
 ---
 
 ## What you need
 
-- **Hub (super-admin):** Runs in the [Asoldi website](https://github.com/Damianhch/Asoldi-website) repo at **that domain/superadmin**. There you add client sites and turn features (Users, Analytics, Ecommerce) on/off.
+- **Hub (super-admin):** Runs in the [Asoldi website](https://github.com/Damianhch/asoldi-website) repo at **that domain/superadmin**. There you add client sites, pick a website plan, turn features on/off, and choose an ecommerce catalog type.
 - **This package:** Install in each **client** project so that **domain.com/admin** gives the client their CMS.
 
 ---
@@ -14,7 +16,7 @@ Client CMS for Asoldi client sites: **users**, **ecommerce** (name, price, descr
 ## Install in a client project
 
 ```bash
-npm install @asoldi/client-cms
+npm install @damianhch/client-cms
 ```
 
 ---
@@ -23,8 +25,8 @@ npm install @asoldi/client-cms
 
 1. Open the hub: **https://your-hub-domain.com/superadmin** (e.g. asoldi.com/superadmin).
 2. Log in (same credentials as that site’s /admin).
-3. Click **Add site**, enter **Name** and **Domain** (e.g. mongsushi.no).
-4. Enable features: Users, Ecommerce, Analytics (as needed).
+3. Click **Add site**, enter **Name**, **Domain**, and **Website plan**.
+4. If the plan includes a shop (or you enable Ecommerce later), pick **catalog type**: menu, tiers, or normal products.
 5. Copy the **site key** and set it in the client project as `CMS_SITE_KEY`.
 
 ---
@@ -35,7 +37,7 @@ In the client project’s server (e.g. `server.js`), mount the routes **before**
 
 ```js
 import express from 'express';
-import createCmsRoutes from '@asoldi/client-cms';
+import createCmsRoutes from '@damianhch/client-cms';
 
 const app = express();
 app.use(express.json());
@@ -54,7 +56,7 @@ app.use(
 
 - **hubUrl** – Root URL of the site that runs the hub (no trailing slash).
 - **siteKey** – From the hub (Super Admin → Add site → Copy).
-- **dataPath** – Folder where this client’s CMS data is stored (e.g. `./data` → writes to `data/cms/users.json`, `products.json`, `admin.json`).
+- **dataPath** – Folder where this client’s CMS data is stored (e.g. `./data` → writes to `data/cms/users.json`, `products.json`, `categories.json`, `admin.json`).
 
 ---
 
@@ -63,7 +65,7 @@ app.use(
 In the client’s React app (React Router):
 
 ```jsx
-import { ClientCMS } from '@asoldi/client-cms/ClientCMS';
+import { ClientCMS } from '@damianhch/client-cms/ClientCMS';
 
 // In your router:
 <Route path="/admin" element={<ClientCMS />} />
@@ -83,25 +85,53 @@ Set on the server (e.g. Hostinger env):
 Optional (first-run admin account):
 
 - **CMS_ADMIN_USERNAME** / **CMS_ADMIN_PASSWORD** – Default admin for this client’s CMS (defaults: `admin` / `changeme`).
+- **CMS_PUBLIC_URL** – Public site origin used in hub heartbeats (e.g. `https://mongsushi.no`). If unset, the CMS infers it from the incoming request host.
 
 ---
 
-## Ecommerce
+## Ecommerce catalog
 
-When Ecommerce is enabled for the site in the hub, the client sees the **Ecommerce** tab in `/admin`. They can add products with:
+When Ecommerce is enabled for the site in the hub, `/admin` shows the **Ecommerce** tab. The form matches the hub **catalog type**:
 
-- **Name** (required)
-- **Price** (number)
-- **Description** (optional)
-- **Image URL** (optional; paste a link; file upload can be added in the client project later)
+| Catalog type | Categories | Product fields |
+|---|---|---|
+| **menu** | Yes (groups) | name, price, description, image, category, allergens |
+| **tiers** | No | name, price, bullets, CTA, optional image |
+| **normal** | Yes (tabs) | name, subtitle, description, price, image, category |
 
-Data is stored in **data/cms/products.json** on the client’s server. When they revisit `/admin`, the list is loaded from that file (or from a DB if you replace the store in your fork).
+Admin CRUD is authenticated. The public storefront should read:
+
+```
+GET /api/cms/catalog
+→ { catalogType, name, categories, products }
+```
+
+That endpoint returns **404** when ecommerce is off. Product data stays on the client server (`data/cms/products.json` and `data/cms/categories.json`). Existing flat `{name, price, description, imageUrl}` rows are migrated in place.
+
+---
+
+## Hub config and heartbeats
+
+`GET /api/cms/config` proxies the hub and adds this package version:
+
+```
+{
+  features: { users, analytics, ecommerce, blog, socialSync },
+  name, id,
+  ecommerceCatalogType,
+  websitePlan,
+  desiredCmsVersion,
+  packageVersion
+}
+```
+
+On each config load the CMS POSTs `{CMS_HUB_URL}/api/hub/heartbeat` with `site_key`, `packageVersion`, and `adminUrl` so the hub can show last-seen version for fleet updates.
 
 ---
 
 ## Domain changes
 
-If a client’s domain changes (e.g. test → asoldi.com), update the **Domain** in the hub for that site. **CMS_SITE_KEY** in the client project stays the same.
+If a client’s domain changes, update the **Domain** in the hub for that site. **CMS_SITE_KEY** in the client project stays the same.
 
 ---
 

@@ -3,7 +3,6 @@
  * Server must mount createCmsRoutes at /api/cms (see README).
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag, Newspaper, Share2 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { EcommercePanel } from './EcommercePanel.jsx';
@@ -247,7 +246,7 @@ export function ClientCMS() {
               </button>
             </form>
             <p className="mt-4 text-center">
-              <Link to="/" className="text-sm text-gray-400 hover:text-white">← Back to site</Link>
+              <a href="/" className="text-sm text-gray-400 hover:text-white">← Back to site</a>
             </p>
           </div>
         </div>
@@ -261,7 +260,7 @@ export function ClientCMS() {
       <div className="min-h-screen bg-[#1e1e1e] flex">
         <aside className="w-56 bg-[#23282d] text-white flex flex-col fixed inset-y-0 left-0">
           <div className="p-4 border-b border-white/10">
-            <Link to="/" className="text-lg font-semibold text-white">{siteName || 'Admin'}</Link>
+            <a href="/" className="text-lg font-semibold text-white">{siteName || 'Admin'}</a>
             <p className="text-xs text-gray-400 mt-1">Client CMS</p>
           </div>
           <nav className="flex-1 p-2">

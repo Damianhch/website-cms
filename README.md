@@ -47,7 +47,6 @@ app.use(
   createCmsRoutes({
     hubUrl: process.env.CMS_HUB_URL,
     siteKey: process.env.CMS_SITE_KEY,
-    dataPath: process.env.CMS_DATA_PATH || './data',
   })
 );
 
@@ -56,7 +55,7 @@ app.use(
 
 - **hubUrl** – Root URL of the site that runs the hub (no trailing slash).
 - **siteKey** – From the hub (Super Admin → Add site → Copy).
-- **dataPath** – Folder where this client’s CMS data is stored (e.g. `./data` → writes to `data/cms/users.json`, `products.json`, `categories.json`, `admin.json`).
+- **dataPath** – Optional. Defaults to `~/.asoldi-cms-data/<siteKey>` (Hostinger Git deploys do not wipe it). Set `CMS_DATA_PATH` only to override.
 
 ---
 

@@ -38,10 +38,11 @@ This repo is **@damianhch/client-cms** (v1.2.0): the **client-facing CMS package
    ```
 3. **Frontend:** Add route for `/admin` that renders the CMS UI:
    ```js
-   import { ClientCMS } from '@damianhch/client-cms/ClientCMS';
-   <Route path="/admin" element={<ClientCMS />} />
-   ```
-4. **Env (e.g. Hostinger):** `CMS_HUB_URL`, `CMS_SITE_KEY` (and optionally `CMS_ADMIN_USERNAME`, `CMS_ADMIN_PASSWORD` for first-run admin).
+import { ClientCMS } from '@damianhch/client-cms/ClientCMS';
+<Route path="/admin" element={<ClientCMS />} />
+```
+HTML Hostinger apps instead call `mountCmsAdmin(app)` and skip the React route.
+4. **Env (e.g. Hostinger):** `CMS_HUB_URL`, `CMS_SITE_KEY` (and optionally `CMS_ADMIN_USERNAME`, `CMS_ADMIN_PASSWORD` for first-run admin). Data defaults to `~/.asoldi-cms-data/<siteKey>`.
 
 The hub is **not** in this repo; it stays in the Asoldi website project. This repo only contains what gets npm-published for client sites.
 

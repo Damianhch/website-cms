@@ -1,7 +1,7 @@
 {
   "name": "@damianhch/client-cms",
-  "version": "1.1.0",
-  "description": "Client CMS for Asoldi client sites: users, typed ecommerce (menu/tiers/normal), hub-driven features. Mount at /api/cms, route /admin to ClientCMS.",
+  "version": "1.2.0",
+  "description": "Client CMS for Asoldi client sites: users, typed ecommerce (menu/tiers/normal), hub-driven features. Mount at /api/cms, serve /admin from admin-dist or ClientCMS.",
   "type": "module",
   "main": "server/routes.js",
   "exports": {
@@ -11,17 +11,19 @@
   "files": [
     "server",
     "client",
+    "admin-dist",
     "README.md",
     "docs"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "build:admin": "vite build --config vite.admin.config.js"
   },
   "peerDependencies": {
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19",
     "react-router-dom": "^6 || ^7",
-    "react-helmet-async": "^3",
+    "react-helmet-async": "^2 || ^3",
     "express": "^4"
   },
   "dependencies": {
@@ -29,7 +31,16 @@
     "lucide-react": "^0.546.0",
     "multer": "^1.4.5-lts.1"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-helmet-async": "^3.0.0",
+    "react-router-dom": "^6.22.3",
+    "tailwindcss": "^4.2.1",
+    "vite": "^6.2.0"
+  },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },

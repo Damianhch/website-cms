@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { createStore } from './store.js';
+import { resolveCmsDataPath } from './data-path.js';
 import {
   DEFAULT_FEATURES,
   normalizeFeatures,
@@ -12,6 +13,9 @@ import {
   publicProduct,
   resolveCatalogType,
 } from './catalog.js';
+
+export { resolveCmsDataPath } from './data-path.js';
+export { getAdminDistDir, mountCmsAdmin } from './admin-static.js';
 
 const PACKAGE_VERSION = (() => {
   try {
@@ -46,13 +50,14 @@ function withPackageVersion(data) {
 export default function createCmsRoutes({
   hubUrl,
   siteKey,
-  dataPath = './data',
+  dataPath,
   adminSecret = process.env.CMS_ADMIN_SECRET || process.env.ADMIN_SECRET || 'change-me',
 } = {}) {
+  const resolvedDataPath = resolveCmsDataPath({ dataPath, siteKey });
   const router = express.Router();
-  const store = createStore(dataPath);
+  const store = createStore(resolvedDataPath);
 
-  const uploadsDir = resolve(dataPath, 'cms', 'uploads');
+  const uploadsDir = resolve(resolvedDataPath, 'cms', 'uploads');
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
   const upload = multer({
     storage: multer.diskStorage({

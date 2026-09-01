@@ -2,7 +2,7 @@
 
 Client CMS for Asoldi client sites: **users**, **typed ecommerce** (menu / tiers / normal), and hub-driven feature flags (users, ecommerce, blog, social sync, analytics). Install in any client project; mount at `/api/cms`, show UI at `/admin`.
 
-Package version: **1.1.0**.
+Package version: **1.2.0**.
 
 ---
 
@@ -47,7 +47,6 @@ app.use(
   createCmsRoutes({
     hubUrl: process.env.CMS_HUB_URL,
     siteKey: process.env.CMS_SITE_KEY,
-    dataPath: process.env.CMS_DATA_PATH || './data',
   })
 );
 
@@ -56,7 +55,7 @@ app.use(
 
 - **hubUrl** – Root URL of the site that runs the hub (no trailing slash).
 - **siteKey** – From the hub (Super Admin → Add site → Copy).
-- **dataPath** – Folder where this client’s CMS data is stored (e.g. `./data` → writes to `data/cms/users.json`, `products.json`, `categories.json`, `admin.json`).
+- **dataPath** – Optional. Defaults to `~/.asoldi-cms-data/<siteKey>` (Hostinger Git deploys do not wipe it). Set `CMS_DATA_PATH` only to override.
 
 ---
 
@@ -81,6 +80,19 @@ Set on the server (e.g. Hostinger env):
 
 - **CMS_HUB_URL** – Hub root URL (e.g. `https://asoldi.com`).
 - **CMS_SITE_KEY** – Site key from the hub for this client.
+- **CMS_DATA_PATH** – Optional. Folder for this site’s CMS JSON (users, products, uploads). If unset, data lives in `~/.asoldi-cms-data/<siteKey>` so Hostinger Git deploys do not wipe content. Existing `./data/cms` is copied there once.
+
+For HTML (non-React) Hostinger apps, serve the prebuilt admin SPA:
+
+```js
+import createCmsRoutes, { mountCmsAdmin } from '@damianhch/client-cms';
+
+app.use('/api/cms', createCmsRoutes({
+  hubUrl: process.env.CMS_HUB_URL,
+  siteKey: process.env.CMS_SITE_KEY,
+}));
+mountCmsAdmin(app);
+```
 
 Optional (first-run admin account):
 
@@ -106,7 +118,7 @@ GET /api/cms/catalog
 → { catalogType, name, categories, products }
 ```
 
-That endpoint returns **404** when ecommerce is off. Product data stays on the client server (`data/cms/products.json` and `data/cms/categories.json`). Existing flat `{name, price, description, imageUrl}` rows are migrated in place.
+That endpoint returns **404** when ecommerce is off. Product data stays on the client server (`{dataPath}/cms/products.json`). Existing flat `{name, price, description, imageUrl}` rows are migrated in place.
 
 ---
 

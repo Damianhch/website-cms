@@ -2,7 +2,7 @@
 
 Client CMS for Asoldi client sites: **users**, **typed ecommerce** (menu / tiers / normal), and hub-driven feature flags (users, ecommerce, blog, social sync, analytics). Install in any client project; mount at `/api/cms`, show UI at `/admin`.
 
-Package version: **1.2.0**.
+Package version: **1.4.0**.
 
 ---
 
@@ -103,13 +103,15 @@ Optional (first-run admin account):
 
 ## Ecommerce catalog
 
-When Ecommerce is enabled for the site in the hub, `/admin` shows the **Ecommerce** tab. The form matches the hub **catalog type**:
+When Ecommerce is enabled for the site in the hub, `/admin` shows the **Ecommerce** tab with **Products** and **Orders / Ordre**.
 
-| Catalog type | Categories | Product fields |
+| Catalog / product type | Categories | Product fields |
 |---|---|---|
-| **menu** | Yes (groups) | name, price, description, image, category, allergens |
-| **tiers** | No | name, price, bullets, CTA, optional image |
-| **normal** | Yes (tabs) | name, subtitle, description, price, image, category |
+| **menu** | Yes (groups) | name, price, compare-at, contact instead, description, image, category, allergens, extras, stock |
+| **tiers** | Optional | name, price, included bullets, CTA, extra notes, image, stock |
+| **normal** | Yes (tabs) | name, subtitle, description, price, image, category, extra notes, stock |
+
+Each product stores its own **product type**. The hub catalog type is the default for new products.
 
 Admin CRUD is authenticated. The public storefront should read:
 
@@ -117,6 +119,31 @@ Admin CRUD is authenticated. The public storefront should read:
 GET /api/cms/catalog
 → { catalogType, name, categories, products }
 ```
+
+Orders are stored on the client host (`orders.json`) and are not deleted; cancel them with status.
+
+**Payment setup** (Ecommerce → Payment setup) stores Stripe Connect Standard + PayPal seller ids on the host. Live onboarding needs `STRIPE_SECRET_KEY` + `STRIPE_CONNECT_CLIENT_ID`, and `PAYPAL_CLIENT_ID` + `PAYPAL_SECRET`.
+
+---
+
+## Email marketing
+
+Hub flag `emailMarketing`. Lists + contacts live in `lists.json` / `leads.json`. Public form endpoint:
+
+```
+POST /api/cms/leads
+{ email, name, sms, whatsapp, language, marketingAccept, listSlug? }
+```
+
+`marketingAccept` is stored as `true` or empty (never a visible `false` in the admin table).
+
+---
+
+## Blog, ranks, analytics
+
+- **Blog** (`blog` flag): text + image blocks, author is the signed-in user, draft / scheduled / published. Public `GET /api/cms/posts`.
+- **General** (`general` flag): CMS user ranks — employee (no delete users), writer (blog only), member (no modules). Superadmin has a **Client admin user** page (name, email, password, avatar, service checkboxes). A new password hashes on the hub and syncs to the client CMS on the next config fetch.
+- **Analytics** (`analytics` flag): Asoldi-owned GA4. No client Google login. Verify with DNS TXT `_asoldi-analytics`. Env: `GA4_MEASUREMENT_ID`, `GA4_PROPERTY_ID`. Public snippet: `GET /api/cms/analytics/public`.
 
 That endpoint returns **404** when ecommerce is off. Product data stays on the client server (`{dataPath}/cms/products.json`). Existing flat `{name, price, description, imageUrl}` rows are migrated in place.
 
@@ -128,7 +155,7 @@ That endpoint returns **404** when ecommerce is off. Product data stays on the c
 
 ```
 {
-  features: { users, analytics, ecommerce, blog, socialSync },
+  features: { users, analytics, ecommerce, blog, socialSync, emailMarketing, general },
   name, id,
   ecommerceCatalogType,
   websitePlan,

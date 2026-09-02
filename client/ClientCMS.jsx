@@ -3,9 +3,12 @@
  * Server must mount createCmsRoutes at /api/cms (see README).
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag, Newspaper, Share2 } from 'lucide-react';
+import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag, Newspaper, Share2, Mail } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { EcommercePanel } from './EcommercePanel.jsx';
+import { EmailMarketingPanel } from './EmailMarketingPanel.jsx';
+import { BlogPanel } from './BlogPanel.jsx';
+import { AnalyticsPanel } from './AnalyticsPanel.jsx';
 
 const API = '/api/cms';
 
@@ -26,15 +29,21 @@ function authHeaders() {
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-const DEFAULT_FEATURES = { users: true, analytics: false, ecommerce: false, blog: false, socialSync: false };
+const DEFAULT_FEATURES = { users: true, analytics: false, ecommerce: false, blog: false, socialSync: false, emailMarketing: false, general: false };
 
-function firstEnabledTab(features) {
-  if (features.users !== false) return 'users';
-  if (features.ecommerce) return 'ecommerce';
-  if (features.blog) return 'blog';
-  if (features.socialSync) return 'social';
-  if (features.analytics) return 'analytics';
-  return 'users';
+function firstEnabledTab(features, rank = 'admin') {
+  const can = (tab) => {
+    if (rank === 'member') return false;
+    if (rank === 'writer') return tab === 'blog';
+    return true;
+  };
+  if (features.users !== false && can('users')) return 'users';
+  if (features.ecommerce && can('ecommerce')) return 'ecommerce';
+  if (features.emailMarketing && can('email')) return 'email';
+  if (features.blog && can('blog')) return 'blog';
+  if (features.socialSync && can('social')) return 'social';
+  if (features.analytics && can('analytics')) return 'analytics';
+  return rank === 'writer' && features.blog ? 'blog' : 'users';
 }
 
 export function ClientCMS() {
@@ -48,9 +57,10 @@ export function ClientCMS() {
   const [siteName, setSiteName] = useState('');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [userForm, setUserForm] = useState({ username: '', password: '' });
+  const [userForm, setUserForm] = useState({ username: '', password: '', rank: 'employee' });
   const [editingId, setEditingId] = useState(null);
   const [editPassword, setEditPassword] = useState('');
+  const [actor, setActor] = useState({ rank: 'admin', username: '', name: '' });
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -76,7 +86,7 @@ export function ClientCMS() {
         setCatalogType(data?.ecommerceCatalogType === 'menu' || data?.ecommerceCatalogType === 'tiers' ? data.ecommerceCatalogType : 'normal');
         if (data?.name) setSiteName(data.name);
         setTab((current) => {
-          if (current === 'users' && nextFeatures.users === false) return firstEnabledTab(nextFeatures);
+          if (current === 'users' && nextFeatures.users === false) return firstEnabledTab(nextFeatures, actor.rank);
           return current;
         });
       })
@@ -89,8 +99,27 @@ export function ClientCMS() {
       setLoggedIn(false);
       return;
     }
-    fetchUsers()
-      .then(() => setLoggedIn(true))
+    fetch(`${API}/admin/me`, { headers: authHeaders() })
+      .then(async (res) => {
+        if (res.status === 401) {
+          clearToken();
+          setLoggedIn(false);
+          return;
+        }
+        if (!res.ok) {
+          setLoggedIn(false);
+          return;
+        }
+        const me = await res.json();
+        setActor({ rank: me.rank || 'admin', username: me.username || '', name: me.name || me.username || '' });
+        setLoggedIn(true);
+        if (me.rank === 'admin' || me.rank === 'employee') fetchUsers();
+        setTab((current) => {
+          if (me.rank === 'writer') return 'blog';
+          if (me.rank === 'member') return 'users';
+          return current;
+        });
+      })
       .catch(() => setLoggedIn(false));
   }, [fetchUsers]);
 
@@ -110,8 +139,11 @@ export function ClientCMS() {
         return;
       }
       setToken(data.token);
+      const nextActor = { rank: data.rank || 'admin', username: data.username || username, name: data.name || data.username || username };
+      setActor(nextActor);
       setLoggedIn(true);
-      fetchUsers();
+      setTab(firstEnabledTab(features, nextActor.rank));
+      if (nextActor.rank === 'admin' || nextActor.rank === 'employee') fetchUsers();
     } catch {
       setLoginError('Network error');
     } finally {
@@ -139,19 +171,20 @@ export function ClientCMS() {
         alert(data.message || 'Failed to create user');
         return;
       }
-      setUserForm({ username: '', password: '' });
+      setUserForm({ username: '', password: '', rank: 'employee' });
       fetchUsers();
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateUser = async (id, newUsername, newPassword) => {
+  const handleUpdateUser = async (id, newUsername, newPassword, newRank) => {
     setLoading(true);
     try {
       const body = {};
-      if (newUsername !== undefined) body.username = newUsername;
+      if (newUsername !== undefined && newUsername !== null) body.username = newUsername;
       if (newPassword !== undefined && newPassword !== '') body.password = newPassword;
+      if (newRank !== undefined) body.rank = newRank;
       const res = await fetch(`${API}/admin/users/${id}`, {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -254,6 +287,11 @@ export function ClientCMS() {
     );
   }
 
+  const rank = actor.rank || 'admin';
+  const isStaffManager = rank === 'admin' || rank === 'employee';
+  const canBlog = rank === 'admin' || rank === 'employee' || rank === 'writer';
+  const canDeleteStaff = rank === 'admin';
+
   return (
     <>
       <Helmet><title>Admin</title><meta name="robots" content="noindex,nofollow" /></Helmet>
@@ -261,10 +299,10 @@ export function ClientCMS() {
         <aside className="w-56 bg-[#23282d] text-white flex flex-col fixed inset-y-0 left-0">
           <div className="p-4 border-b border-white/10">
             <a href="/" className="text-lg font-semibold text-white">{siteName || 'Admin'}</a>
-            <p className="text-xs text-gray-400 mt-1">Client CMS</p>
+            <p className="text-xs text-gray-400 mt-1">Client CMS{rank && rank !== 'admin' ? ` · ${rank}` : ''}</p>
           </div>
           <nav className="flex-1 p-2">
-            {features.users !== false && (
+            {features.users !== false && isStaffManager && (
               <button
                 type="button"
                 onClick={() => setTab('users')}
@@ -273,7 +311,7 @@ export function ClientCMS() {
                 <Users size={18} /> Users
               </button>
             )}
-            {features.ecommerce && (
+            {features.ecommerce && isStaffManager && (
               <button
                 type="button"
                 onClick={() => setTab('ecommerce')}
@@ -282,7 +320,16 @@ export function ClientCMS() {
                 <ShoppingBag size={18} /> Ecommerce
               </button>
             )}
-            {features.blog && (
+            {features.emailMarketing && isStaffManager && (
+              <button
+                type="button"
+                onClick={() => setTab('email')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'email' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
+              >
+                <Mail size={18} /> Email marketing
+              </button>
+            )}
+            {features.blog && canBlog && (
               <button
                 type="button"
                 onClick={() => setTab('blog')}
@@ -291,7 +338,7 @@ export function ClientCMS() {
                 <Newspaper size={18} /> Blog
               </button>
             )}
-            {features.socialSync && (
+            {features.socialSync && isStaffManager && (
               <button
                 type="button"
                 onClick={() => setTab('social')}
@@ -300,7 +347,7 @@ export function ClientCMS() {
                 <Share2 size={18} /> Social sync
               </button>
             )}
-            {features.analytics && (
+            {features.analytics && isStaffManager && (
               <button
                 type="button"
                 onClick={() => setTab('analytics')}
@@ -321,17 +368,11 @@ export function ClientCMS() {
           </div>
         </aside>
         <main className="flex-1 ml-56 p-8">
-          {tab === 'analytics' && (
-            <div className="max-w-4xl">
-              <h1 className="text-2xl font-bold text-white mb-6">Analytics</h1>
-              <p className="text-gray-400">Connect Google Analytics or Business Profile. Coming soon.</p>
-            </div>
+          {tab === 'analytics' && features.analytics && isStaffManager && (
+            <AnalyticsPanel authHeaders={authHeaders} loading={loading} setLoading={setLoading} />
           )}
-          {tab === 'blog' && (
-            <div className="max-w-4xl">
-              <h1 className="text-2xl font-bold text-white mb-6">Blog</h1>
-              <p className="text-gray-400">Write and publish posts from this CMS. Coming soon.</p>
-            </div>
+          {tab === 'blog' && features.blog && canBlog && (
+            <BlogPanel authHeaders={authHeaders} loading={loading} setLoading={setLoading} actor={actor} />
           )}
           {tab === 'social' && (
             <div className="max-w-4xl">
@@ -339,13 +380,22 @@ export function ClientCMS() {
               <p className="text-gray-400">Reviews and social media sync. Coming soon.</p>
             </div>
           )}
-          {tab === 'ecommerce' && features.ecommerce && (
+          {tab === 'ecommerce' && features.ecommerce && isStaffManager && (
             <EcommercePanel catalogType={catalogType} authHeaders={authHeaders} loading={loading} setLoading={setLoading} />
           )}
-          {tab === 'users' && features.users !== false && (
+          {tab === 'email' && features.emailMarketing && isStaffManager && (
+            <EmailMarketingPanel authHeaders={authHeaders} loading={loading} setLoading={setLoading} />
+          )}
+          {rank === 'member' && (
+            <div className="max-w-4xl">
+              <h1 className="text-2xl font-bold text-white mb-6">Member</h1>
+              <p className="text-gray-400">This login has no CMS modules. Ask an admin if you need access.</p>
+            </div>
+          )}
+          {tab === 'users' && features.users !== false && isStaffManager && (
             <div className="max-w-4xl">
               <h1 className="text-2xl font-bold text-white mb-6">Users</h1>
-              <p className="text-gray-400 text-sm mb-6">Staff logins for this site. Passwords are encrypted.</p>
+              <p className="text-gray-400 text-sm mb-6">Staff logins for this site. Passwords are encrypted.{features.general ? ' Ranks: employee (no delete users), writer (blog only), member (no modules).' : ''}</p>
               <div className="rounded-xl bg-[#2a2a2a] border border-white/10 p-6 mb-8">
                 <h2 className="text-lg font-medium text-white mb-4">Add user</h2>
                 <form onSubmit={handleAddUser} className="flex flex-wrap gap-4 items-end">
@@ -357,6 +407,16 @@ export function ClientCMS() {
                     <label className="block text-xs text-gray-400 mb-1">Password</label>
                     <input type="password" value={userForm.password} onChange={(e) => setUserForm((f) => ({ ...f, password: e.target.value }))} placeholder="New password" className="px-4 py-2 rounded-lg bg-[#1a1a1a] border border-white/20 text-white placeholder-gray-500 w-48" />
                   </div>
+                  {features.general && (
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">Rank</label>
+                      <select value={userForm.rank || 'employee'} onChange={(e) => setUserForm((f) => ({ ...f, rank: e.target.value }))} className="px-4 py-2 rounded-lg bg-[#1a1a1a] border border-white/20 text-white">
+                        <option value="employee">Employee</option>
+                        <option value="writer">Writer</option>
+                        <option value="member">Member</option>
+                      </select>
+                    </div>
+                  )}
                   <button type="submit" disabled={loading || !userForm.username.trim() || !userForm.password} className="px-4 py-2 rounded-lg bg-[#FF5B00] text-white font-medium hover:bg-[#e55200] disabled:opacity-50">Add user</button>
                 </form>
               </div>
@@ -365,6 +425,7 @@ export function ClientCMS() {
                   <thead>
                     <tr className="border-b border-white/10">
                       <th className="px-4 py-3 text-gray-400 font-medium">Username</th>
+                      {features.general && <th className="px-4 py-3 text-gray-400 font-medium">Rank</th>}
                       <th className="px-4 py-3 text-gray-400 font-medium">Created</th>
                       <th className="px-4 py-3 text-gray-400 font-medium w-48">Actions</th>
                     </tr>
@@ -389,6 +450,19 @@ export function ClientCMS() {
                             <span onClick={() => setEditingId(u.id)} className="cursor-pointer hover:underline">{u.username}</span>
                           )}
                         </td>
+                        {features.general && (
+                          <td className="px-4 py-3">
+                            <select
+                              value={u.rank || 'employee'}
+                              onChange={(e) => handleUpdateUser(u.id, undefined, undefined, e.target.value)}
+                              className="px-2 py-1 rounded bg-[#1a1a1a] border border-white/20 text-white text-sm"
+                            >
+                              <option value="employee">Employee</option>
+                              <option value="writer">Writer</option>
+                              <option value="member">Member</option>
+                            </select>
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-gray-400 text-sm">{new Date(u.createdAt).toLocaleDateString()}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
@@ -401,7 +475,9 @@ export function ClientCMS() {
                             ) : (
                               <>
                                 <button type="button" onClick={() => setEditingId(u.id)} className="text-xs text-[#FF5B00] hover:underline">Edit</button>
-                                <button type="button" onClick={() => handleDeleteUser(u.id)} className="text-xs text-red-400 hover:underline">Delete</button>
+                                {canDeleteStaff && (
+                                  <button type="button" onClick={() => handleDeleteUser(u.id)} className="text-xs text-red-400 hover:underline">Delete</button>
+                                )}
                               </>
                             )}
                           </div>

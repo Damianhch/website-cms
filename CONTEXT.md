@@ -1,6 +1,6 @@
 # Context for Cursor / developers
 
-This repo is **@damianhch/client-cms** (v1.2.0): the **client-facing CMS package** that gets installed on each client website (e.g. mongsushi.no, or any site built by Asoldi). It is **not** the super-admin; the super-admin lives in the main Asoldi website repo.
+This repo is **@damianhch/client-cms** (v1.4.0): the **client-facing CMS package** that gets installed on each client website (e.g. mongsushi.no, or any site built by Asoldi). It is **not** the super-admin; the super-admin lives in the main Asoldi website repo.
 
 ---
 
@@ -9,7 +9,7 @@ This repo is **@damianhch/client-cms** (v1.2.0): the **client-facing CMS package
 - **Client CMS** = the UI and API that **clients** (business owners) use at **domain.com/admin** to manage:
   - **Users** – staff logins for that site (e.g. “ansatt” login).
   - **Ecommerce** – typed catalog driven by the hub: **menu**, **tiers**, or **normal** products. Data is stored per site under `{dataPath}/cms/` (default `~/.asoldi-cms-data/<siteKey>/cms`).
-  - **Blog / social sync / analytics** – tabs appear when the hub enables them; implementations are placeholders in this version.
+  - **Blog / social sync / analytics / email** – tabs appear when the hub enables them. Blog, analytics (GA4 DNS), and email lists are implemented in 1.4.0; social sync is still a placeholder.
 - **Hub-driven features:** Which modules are visible is controlled by a **hub** (super-admin). Each client project sets `CMS_HUB_URL` and `CMS_SITE_KEY`; on load the CMS calls the hub and only shows the enabled modules.
 
 ---
@@ -51,9 +51,12 @@ The hub is **not** in this repo; it stays in the Asoldi website project. This re
 ## Ecommerce data
 
 - Products: `dataPath/cms/products.json`
-- Categories: `dataPath/cms/categories.json` (menu groups / normal product tabs; unused for tiers)
-- Shared product fields: `id`, `name`, `price`, `description`, `imageUrl`, `categoryId`, `allergens`, `subtitle`, `bullets`, `cta`, `sortOrder`, `createdAt`, `updatedAt`
+- Categories: `dataPath/cms/categories.json` (menu groups / normal product tabs)
+- Orders: `dataPath/cms/orders.json` (append-only log; cancel via status, never hard-delete)
+- Settings: `dataPath/cms/settings.json` (orders view preset: `normal` | `service`)
+- Shared product fields: `id, name, price, comparePrice, contactInsteadOfPrice, description, imageUrl, categoryId, allergens, subtitle, included/bullets, extraTexts, extraOptions, cta, productType, stockQty, soldOut, sortOrder, createdAt, updatedAt`
 - Public read: `GET /api/cms/catalog` (only when hub ecommerce is on)
+- Admin: WordPress-like Products list (Quick Edit + full Edit) and Orders / Ordre
 - Image upload: `POST /api/cms/upload` → `data/cms/uploads/` served at `/api/cms/uploads/...`
 
 When the agency enables “Ecommerce” and picks a catalog type in the super-admin, the Ecommerce tab in that client’s `/admin` shows the matching form.

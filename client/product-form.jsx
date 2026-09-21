@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { MediaPicker } from './MediaPanel.jsx';
 
 export const PRODUCT_TYPES = [
   { id: 'normal', label: 'Normal' },
@@ -90,13 +91,24 @@ export function payloadFromForm(form) {
   };
 }
 
-function ImageDropzone({ imageUrl, uploading, onUpload, onClear, disabled }) {
+function ImageDropzone({ imageUrl, uploading, onUpload, onClear, disabled, onPickUrl, authHeaders }) {
   const inputRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <div>
-      <label className="block text-xs text-gray-400 mb-1">Image</label>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-xs text-gray-400">Image</label>
+        {authHeaders && onPickUrl && (
+          <button type="button" disabled={disabled} onClick={() => setPickerOpen(true)} className="text-xs text-[#FF5B00] hover:underline">
+            Choose from media library
+          </button>
+        )}
+      </div>
+      {authHeaders && onPickUrl && (
+        <MediaPicker authHeaders={authHeaders} open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={(item) => onPickUrl(item.url)} kind="image" />
+      )}
       <input
         ref={inputRef}
         type="file"
@@ -156,7 +168,7 @@ function ImageDropzone({ imageUrl, uploading, onUpload, onClear, disabled }) {
   );
 }
 
-export function ProductFields({ form, setForm, categories, loading, imageUploading, onUpload, compact = false }) {
+export function ProductFields({ form, setForm, categories, loading, imageUploading, onUpload, compact = false, authHeaders }) {
   const type = form.productType || 'normal';
   const usesCategories = type === 'menu' || type === 'normal';
 
@@ -343,6 +355,8 @@ export function ProductFields({ form, setForm, categories, loading, imageUploadi
           disabled={loading}
           onUpload={onUpload}
           onClear={() => setForm((current) => ({ ...current, imageUrl: '' }))}
+          authHeaders={authHeaders}
+          onPickUrl={(url) => setForm((current) => ({ ...current, imageUrl: url }))}
         />
       </div>
     </div>

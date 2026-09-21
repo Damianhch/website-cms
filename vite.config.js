@@ -23,8 +23,17 @@ export default defineConfig({
   build: {
     outDir: path.join(root, 'admin-dist'),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       input: path.join(root, 'admin-index.html'),
+      output: {
+        manualChunks(id) {
+          if (id.includes('grapesjs')) return 'email-editor';
+        },
+      },
     },
+  },
+  optimizeDeps: {
+    include: ['grapesjs', 'grapesjs-preset-newsletter'],
   },
 });

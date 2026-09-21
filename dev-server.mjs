@@ -10,7 +10,7 @@ process.env.CMS_DEV_GENERAL = process.env.CMS_DEV_GENERAL || '1';
 
 const port = Number(process.env.PORT || 3044);
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(
   '/api/cms',
   createCmsRoutes({

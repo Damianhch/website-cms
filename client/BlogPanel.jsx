@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { MediaPicker } from './MediaPanel.jsx';
 
 const API = '/api/cms';
 
@@ -17,6 +18,15 @@ export function BlogPanel({ authHeaders, loading, setLoading, actor }) {
   const [posts, setPosts] = useState([]);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState('');
+  const [pickerFor, setPickerFor] = useState(null);
+
+  const setBlockImage = (index, url, alt) => {
+    setEditing((current) => {
+      const blocks = [...(current.blocks || [])];
+      blocks[index] = { ...blocks[index], type: 'image', url, alt: alt ?? blocks[index]?.alt ?? '' };
+      return { ...current, blocks };
+    });
+  };
 
   const fetchPosts = useCallback(async () => {
     const res = await fetch(`${API}/admin/posts`, { headers: authHeaders() });
@@ -66,15 +76,20 @@ export function BlogPanel({ authHeaders, loading, setLoading, actor }) {
       setError(data.message || 'Upload failed');
       return;
     }
-    setEditing((current) => {
-      const blocks = [...(current.blocks || [])];
-      blocks[index] = { ...blocks[index], type: 'image', url: data.url };
-      return { ...current, blocks };
-    });
+    setBlockImage(index, data.url);
   };
 
   return (
     <div className="max-w-5xl">
+      <MediaPicker
+        authHeaders={authHeaders}
+        open={pickerFor !== null}
+        onClose={() => setPickerFor(null)}
+        onPick={(item) => {
+          if (pickerFor !== null) setBlockImage(pickerFor, item.url, item.alt || undefined);
+        }}
+        kind="image"
+      />
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Blog</h1>
@@ -146,7 +161,12 @@ export function BlogPanel({ authHeaders, loading, setLoading, actor }) {
               </div>
               {block.type === 'image' ? (
                 <div className="space-y-2">
-                  <input type="file" accept="image/*" onChange={(e) => uploadBlockImage(index, e.target.files?.[0])} className="text-sm text-gray-300" />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input type="file" accept="image/*" onChange={(e) => uploadBlockImage(index, e.target.files?.[0])} className="text-sm text-gray-300" />
+                    <button type="button" onClick={() => setPickerFor(index)} className="text-xs text-[#FF5B00] hover:underline">
+                      Choose from media library
+                    </button>
+                  </div>
                   {block.url && <img src={block.url} alt={block.alt || ''} className="max-h-40 rounded" />}
                   <input
                     value={block.alt || ''}

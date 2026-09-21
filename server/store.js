@@ -8,6 +8,7 @@ import { normalizePost, publishDuePost, slugify as slugifyPost } from './blog.js
 import { normalizeRank, publicUser } from './ranks.js';
 import { normalizeAnalytics } from './analytics.js';
 import { normalizePayments } from './payments.js';
+import { normalizeSubmission } from './forms.js';
 
 const SALT_ROUNDS = 12;
 
@@ -24,6 +25,7 @@ export function createStore(dataPath) {
   const POSTS_PATH = join(dir, 'posts.json');
   const ANALYTICS_PATH = join(dir, 'analytics.json');
   const PAYMENTS_PATH = join(dir, 'payments.json');
+  const SUBMISSIONS_PATH = join(dir, 'submissions.json'); // inbox-type form submissions
 
   function ensureDir() {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -412,17 +414,77 @@ export function createStore(dataPath) {
       const needle = String(slug || '').trim().toLowerCase();
       return this.getAllLists().find((list) => list.slug === needle || list.id === needle) || null;
     },
-    createList({ name, slug }) {
+    createList({ name, slug, id } = {}) {
       const trimmed = String(name || '').trim();
       if (!trimmed) return { ok: false, error: 'List name is required' };
       const lists = this.getAllLists();
       const nextSlug = slugifyListName(slug || trimmed);
       if (lists.some((list) => list.slug === nextSlug)) return { ok: false, error: 'List slug already exists' };
+      const wantedId = String(id || '').trim();
+      if (wantedId && lists.some((list) => list.id === wantedId)) return { ok: false, error: 'List id already exists' };
       const now = new Date().toISOString();
-      const list = normalizeList({ id: nextId(), name: trimmed, slug: nextSlug, createdAt: now, updatedAt: now });
+      // `id` lets the Step 3 site seed keep its list ids so form bindings resolve 1:1.
+      const list = normalizeList({ id: wantedId || nextId(), name: trimmed, slug: nextSlug, createdAt: now, updatedAt: now });
       lists.push(list);
       writeJson(LISTS_PATH, lists);
       return { ok: true, list };
+    },
+    /**
+     * Seed lists from cms.site.json once. Existing lists (by id or slug) are kept;
+     * returns a map seedListId → live list id for binding resolution.
+     */
+    seedLists(seedLists = []) {
+      const idMap = {};
+      for (const seed of Array.isArray(seedLists) ? seedLists : []) {
+        if (!seed || !seed.name) continue;
+        const existing = (seed.id && this.getListById(seed.id)) || this.getListBySlug(seed.slug || seed.name);
+        if (existing) {
+          idMap[seed.id || existing.id] = existing.id;
+          continue;
+        }
+        const created = this.createList({ name: seed.name, slug: seed.slug, id: seed.id });
+        if (created.ok) idMap[seed.id || created.list.id] = created.list.id;
+      }
+      return idMap;
+    },
+    getAllSubmissions() {
+      const rows = readJson(SUBMISSIONS_PATH, []);
+      return (Array.isArray(rows) ? rows : [])
+        .map((row) => normalizeSubmission(row))
+        .filter((row) => row && row.id)
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    },
+    querySubmissions({ formId, unread } = {}) {
+      const wantForm = String(formId || '').trim();
+      return this.getAllSubmissions().filter((row) => {
+        if (wantForm && row.formId !== wantForm) return false;
+        if (unread === true && row.read) return false;
+        return true;
+      });
+    },
+    createSubmission(input) {
+      const row = normalizeSubmission({ ...input, id: input?.id || nextId(), createdAt: new Date().toISOString() });
+      if (!row) return { ok: false, error: 'Invalid submission' };
+      const rows = this.getAllSubmissions();
+      rows.unshift(row);
+      // Keep the inbox bounded on disk.
+      writeJson(SUBMISSIONS_PATH, rows.slice(0, 5000));
+      return { ok: true, submission: row };
+    },
+    updateSubmission(id, patch = {}) {
+      const rows = this.getAllSubmissions();
+      const index = rows.findIndex((row) => row.id === String(id));
+      if (index === -1) return { ok: false, error: 'Submission not found' };
+      rows[index] = normalizeSubmission({ ...rows[index], ...patch, id: rows[index].id, createdAt: rows[index].createdAt });
+      writeJson(SUBMISSIONS_PATH, rows);
+      return { ok: true, submission: rows[index] };
+    },
+    deleteSubmission(id) {
+      const rows = this.getAllSubmissions();
+      const next = rows.filter((row) => row.id !== String(id));
+      if (next.length === rows.length) return { ok: false, error: 'Submission not found' };
+      writeJson(SUBMISSIONS_PATH, next);
+      return { ok: true };
     },
     getAllLeads() {
       const rows = readJson(LEADS_PATH, []);

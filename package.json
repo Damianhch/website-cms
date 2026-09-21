@@ -1,7 +1,7 @@
 {
   "name": "@damianhch/client-cms",
-  "version": "1.4.0",
-  "description": "Client CMS for Asoldi client sites: users with ranks, ecommerce, email lists, blog, analytics, payments. Mount at /api/cms, serve /admin from admin-dist or ClientCMS.",
+  "version": "1.7.0",
+  "description": "Client CMS for Asoldi client sites: users with ranks, ecommerce, email lists, blog, analytics, payments, media library. Mount at /api/cms, serve /admin from admin-dist or ClientCMS.",
   "type": "module",
   "main": "server/routes.js",
   "exports": {
@@ -29,13 +29,15 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "express": "^4.22.1",
-    "lucide-react": "^0.546.0",
     "multer": "^1.4.5-lts.1"
   },
   "devDependencies": {
+    "lucide-react": "^0.546.0",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
+    "grapesjs": "^0.23.0",
+    "grapesjs-preset-newsletter": "^1.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-helmet-async": "^2.0.5",

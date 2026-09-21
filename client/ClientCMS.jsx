@@ -2,13 +2,16 @@
  * @asoldi/client-cms – Client CMS UI. Use: <Route path="/admin" element={<ClientCMS />} />
  * Server must mount createCmsRoutes at /api/cms (see README).
  */
-import React, { useState, useEffect, useCallback } from 'react';
-import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag, Newspaper, Share2, Mail } from 'lucide-react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import { Users, LogOut, LayoutDashboard, BarChart3, ShoppingBag, Newspaper, Share2, Mail, Layers, Image as ImageIcon } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { EcommercePanel } from './EcommercePanel.jsx';
-import { EmailMarketingPanel } from './EmailMarketingPanel.jsx';
 import { BlogPanel } from './BlogPanel.jsx';
 import { AnalyticsPanel } from './AnalyticsPanel.jsx';
+import { GeneralPanel } from './GeneralPanel.jsx';
+import { MediaPanel } from './MediaPanel.jsx';
+
+const EmailMarketingPanel = lazy(() => import('./EmailMarketingPanel.jsx').then((m) => ({ default: m.EmailMarketingPanel })));
 
 const API = '/api/cms';
 
@@ -338,6 +341,24 @@ export function ClientCMS() {
                 <Newspaper size={18} /> Blog
               </button>
             )}
+            {canBlog && (
+              <button
+                type="button"
+                onClick={() => setTab('media')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'media' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
+              >
+                <ImageIcon size={18} /> Media
+              </button>
+            )}
+            {isStaffManager && (
+              <button
+                type="button"
+                onClick={() => setTab('general')}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium transition-colors ${tab === 'general' ? 'bg-[#FF5B00] text-white' : 'text-gray-300 hover:bg-white/10'}`}
+              >
+                <Layers size={18} /> General
+              </button>
+            )}
             {features.socialSync && isStaffManager && (
               <button
                 type="button"
@@ -374,6 +395,10 @@ export function ClientCMS() {
           {tab === 'blog' && features.blog && canBlog && (
             <BlogPanel authHeaders={authHeaders} loading={loading} setLoading={setLoading} actor={actor} />
           )}
+          {tab === 'general' && isStaffManager && (
+            <GeneralPanel authHeaders={authHeaders} loading={loading} setLoading={setLoading} siteName={siteName} />
+          )}
+          {tab === 'media' && canBlog && <MediaPanel authHeaders={authHeaders} actor={actor} />}
           {tab === 'social' && (
             <div className="max-w-4xl">
               <h1 className="text-2xl font-bold text-white mb-6">Social sync</h1>
@@ -384,7 +409,9 @@ export function ClientCMS() {
             <EcommercePanel catalogType={catalogType} authHeaders={authHeaders} loading={loading} setLoading={setLoading} />
           )}
           {tab === 'email' && features.emailMarketing && isStaffManager && (
-            <EmailMarketingPanel authHeaders={authHeaders} loading={loading} setLoading={setLoading} />
+            <Suspense fallback={<p className="text-gray-400">Laster e-posteditor…</p>}>
+              <EmailMarketingPanel authHeaders={authHeaders} loading={loading} setLoading={setLoading} />
+            </Suspense>
           )}
           {rank === 'member' && (
             <div className="max-w-4xl">

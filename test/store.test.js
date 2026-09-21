@@ -32,6 +32,8 @@ test('normalizeFeatures fills new flags without dropping users', () => {
     ecommerce: true,
     blog: false,
     socialSync: false,
+    emailMarketing: false,
+    general: false,
   });
 });
 

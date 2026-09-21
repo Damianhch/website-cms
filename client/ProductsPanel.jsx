@@ -169,6 +169,7 @@ export function ProductsPanel({ catalogType, authHeaders, loading, setLoading })
     categories,
     loading,
     imageUploading,
+    authHeaders,
   };
 
   if (view === 'edit') {

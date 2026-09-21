@@ -2,7 +2,7 @@
 
 Client CMS for Asoldi client sites: **users**, **typed ecommerce** (menu / tiers / normal), and hub-driven feature flags (users, ecommerce, blog, social sync, analytics). Install in any client project; mount at `/api/cms`, show UI at `/admin`.
 
-Package version: **1.4.0**.
+Package version: **1.5.0**.
 
 ---
 
@@ -128,7 +128,7 @@ Orders are stored on the client host (`orders.json`) and are not deleted; cancel
 
 ## Email marketing
 
-Hub flag `emailMarketing`. Lists + contacts live in `lists.json` / `leads.json`. Public form endpoint:
+Hub flag `emailMarketing`. **Maler** (GrapesJS, HTML-import, emne + preheader) lives in `email-templates.json`. Asoldi sites seed welcome/reminder presets; other clients start empty. Lists + contacts live in `lists.json` / `leads.json`. Public form endpoint:
 
 ```
 POST /api/cms/leads
@@ -136,6 +136,36 @@ POST /api/cms/leads
 ```
 
 `marketingAccept` is stored as `true` or empty (never a visible `false` in the admin table).
+
+---
+
+## Site seed — bound website forms + pages (`cms.site.json`)
+
+Website Creator's **Step 3 “CMS hookup”** ships a `cms.site.json` next to `server.js` (pass `siteSeedPath` to
+`createCmsRoutes`, or `siteSeed` as an object). It is read-only site structure:
+
+- `lists` — email lists the developer created before deploy. Seeded **once** into `lists.json` with their ids kept, so
+  bindings resolve 1:1; an existing list with the same slug is reused.
+- `forms` — every frontend form bound to this CMS: `destination` (`list` → `listId`, or `inbox`), `fieldMap`
+  (`{ formField: email|name|firstName|lastName|sms|whatsapp|language|marketingAccept|message|subject|company|extra|skip }`),
+  `notify`, `successMessage`, `fields`, `pages`.
+- `pages` — the page map with kinds (`home`, `about`, …, `blog-post`, `product-page`, `cta`, `legal`); `isTemplate` marks
+  the layouts the CMS fills.
+
+Endpoints:
+
+```
+GET  /api/cms/forms-runtime.js         public JS the site pages load; upgrades bound forms to fetch + inline success
+POST /api/cms/forms/:id/submit         public; JSON (runtime) or urlencoded (no-JS → 303 back to ?cms-form=ok)
+GET  /api/cms/forms                    admin; bindings + counts
+GET  /api/cms/pages                    admin; page map
+GET  /api/cms/site                     admin; whole seed (+ live counts)
+GET  /api/cms/submissions?formId=&unread=true   admin; inbox log (PUT /:id {read}, DELETE /:id)
+```
+
+`list` destinations upsert a lead (`formId`, unmapped fields in `extra`); `inbox` destinations store a submission and
+forward it to the hub's `/api/client-forms/:siteKey` so the client still gets the e-mail. Honeypot `_gotcha`.
+Admin UI: **General → Pages / Forms & inbox**; Email marketing lists show which website forms feed them.
 
 ---
 

@@ -36,6 +36,10 @@ export function normalizeLead(raw) {
     marketingAccept: marketingAccept ? true : false,
     marketingAcceptAt: marketingAccept ? String(raw.marketingAcceptAt || createdAt) : '',
     source: String(raw.source || '').trim(),
+    // Set when the lead came through a Step 3 form binding (cms.site.json).
+    formId: String(raw.formId || '').trim(),
+    // Unmapped form fields — kept so no submitted data is lost.
+    extra: raw.extra && typeof raw.extra === 'object' && !Array.isArray(raw.extra) ? raw.extra : {},
     createdAt,
     updatedAt: raw.updatedAt || createdAt,
   };
@@ -48,8 +52,10 @@ export function filterLeads(leads, query = {}) {
   const name = String(query.name || '').trim().toLowerCase();
   const language = String(query.language || '').trim().toLowerCase();
   const accept = String(query.marketingAccept || '').trim().toLowerCase();
+  const formId = String(query.formId || '').trim();
   return rows.filter((lead) => {
     if (listId && lead.listId !== listId) return false;
+    if (formId && lead.formId !== formId) return false;
     if (email && !String(lead.email || '').includes(email)) return false;
     if (name && !String(lead.name || '').toLowerCase().includes(name)) return false;
     if (language && String(lead.language || '').toLowerCase() !== language) return false;
@@ -73,5 +79,7 @@ export function publicLead(lead) {
     marketingAccept: lead.marketingAccept ? true : '',
     marketingAcceptAt: lead.marketingAcceptAt,
     source: lead.source,
+    formId: lead.formId || '',
+    extra: lead.extra || {},
   };
 }

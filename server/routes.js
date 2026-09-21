@@ -19,8 +19,22 @@ import { isPostPublic, publicPost } from './blog.js';
 import { canDeleteUsers, normalizeRank } from './ranks.js';
 import { publicAnalyticsSnippet, verifyAnalyticsDns } from './analytics.js';
 import { publicPayments } from './payments.js';
+import { createEmailTemplateStore, mergeFieldsMeta, shouldSeedAsoldiPresets } from './email-templates.js';
+import { loadSiteSeed } from './site-seed.js';
+import { createMediaLibrary, isAllowedMediaName } from './media.js';
+import {
+  applyFieldMap,
+  errorMessageFor,
+  formsRuntimeScript,
+  looksLikeBot,
+  publicSubmission,
+  safeReturnPath,
+  successMessageFor,
+  wantsJson,
+} from './forms.js';
 
 export { resolveCmsDataPath } from './data-path.js';
+export { loadSiteSeed, normalizeSiteSeed } from './site-seed.js';
 export { getAdminDistDir, mountCmsAdmin } from './admin-static.js';
 
 const PACKAGE_VERSION = (() => {
@@ -71,21 +85,102 @@ export default function createCmsRoutes({
   hubUrl,
   siteKey,
   dataPath,
+  siteSeed: siteSeedInput,
+  siteSeedPath,
   adminSecret = process.env.CMS_ADMIN_SECRET || process.env.ADMIN_SECRET || 'change-me',
 } = {}) {
   const resolvedDataPath = resolveCmsDataPath({ dataPath, siteKey });
   const router = express.Router();
   const store = createStore(resolvedDataPath);
+  const emailTemplates = createEmailTemplateStore(resolvedDataPath);
+
+  // Step 3 site seed (cms.site.json): lists are created once (ids preserved so
+  // bindings resolve), forms + pages are read-only structure.
+  const siteSeed = loadSiteSeed({ siteSeed: siteSeedInput, siteSeedPath });
+  const seedListIdMap = store.seedLists(siteSeed.lists);
+
+  function resolveListForForm(form) {
+    const wanted = String(form?.destination?.listId || '');
+    if (!wanted) return null;
+    const liveId = seedListIdMap[wanted] || wanted;
+    if (store.getListById(liveId)) return store.getListById(liveId);
+    const seedList = siteSeed.lists.find((l) => l.id === wanted);
+    return seedList ? store.getListBySlug(seedList.slug) : null;
+  }
+
+  function publicSiteSeed() {
+    return {
+      ...siteSeed,
+      forms: siteSeed.forms.map((form) => {
+        const list = form.destination.type === 'list' ? resolveListForForm(form) : null;
+        return {
+          ...form,
+          destination: { ...form.destination, listId: list?.id || form.destination.listId, listName: list?.name || '' },
+          count:
+            form.destination.type === 'list'
+              ? store.queryLeads({ formId: form.id }).length
+              : store.querySubmissions({ formId: form.id }).length,
+          unread: form.destination.type === 'inbox' ? store.querySubmissions({ formId: form.id, unread: true }).length : 0,
+        };
+      }),
+    };
+  }
+
+  function safeRefererPath(referer) {
+    try {
+      return new URL(String(referer || '')).pathname || '/';
+    } catch {
+      return '/';
+    }
+  }
+
+  /** E-mail the client through the hub's existing client-forms pipe. */
+  async function forwardToHub(form, mapped, extra, page) {
+    if (!siteKey || !hubUrl) return false;
+    const base = hubUrl.replace(/\/$/, '');
+    const payload = {
+      site_key: siteKey,
+      _cms_form: form.label || form.id,
+      _cms_purpose: form.purpose,
+      _cms_page: page || '',
+      ...mapped,
+      ...extra,
+    };
+    try {
+      const r = await fetch(`${base}/api/client-forms/${encodeURIComponent(siteKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      return r.ok;
+    } catch {
+      return false;
+    }
+  }
 
   const uploadsDir = resolve(resolvedDataPath, 'cms', 'uploads');
   if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+  // Media library: everything a client uploads (product photos, blog images,
+  // videos, PDFs) is listed, editable and reusable — like WordPress Media.
+  const media = createMediaLibrary(uploadsDir);
   const upload = multer({
     storage: multer.diskStorage({
       destination: (_req, _file, cb) => cb(null, uploadsDir),
-      filename: (_req, file, cb) => cb(null, `${Date.now()}-${(file.originalname || 'file').replace(/[^a-zA-Z0-9.-]/g, '_')}`),
+      filename: (_req, file, cb) => cb(null, media.pickName(file.originalname)),
     }),
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: media.maxBytes, files: 20 },
+    fileFilter: (_req, file, cb) => {
+      if (!isAllowedMediaName(file.originalname)) return cb(new Error(`File type not allowed: ${file.originalname}`));
+      cb(null, true);
+    },
   });
+
+  function uploadErrorResponse(res, error) {
+    if (error?.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ message: `File is larger than ${Math.round(media.maxBytes / 1024 / 1024)} MB (CMS_UPLOAD_MAX_MB).` });
+    }
+    return res.status(400).json({ message: error?.message || 'Upload failed' });
+  }
 
   function signToken(payload) {
     const data = JSON.stringify(payload);
@@ -304,12 +399,53 @@ export default function createCmsRoutes({
     res.json({ token, user: result.user });
   });
 
-  router.use('/uploads', express.static(uploadsDir));
+  // The index (alt text, who uploaded) is private — everything else in uploads/ is public media.
+  router.get('/uploads/media-index.json', (_req, res) => res.status(404).end());
+  router.use('/uploads', express.static(uploadsDir, { index: false, dotfiles: 'deny', maxAge: '1d' }));
 
-  router.post('/upload', blogAuth, upload.single('file'), (req, res) => {
-    if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const url = `${req.baseUrl}/uploads/${req.file.filename}`;
-    res.json({ url });
+  router.post('/upload', blogAuth, (req, res) => {
+    upload.single('file')(req, res, (error) => {
+      if (error) return uploadErrorResponse(res, error);
+      if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+      media.register(req.file.filename, { uploadedBy: req.actor?.username || req.actor?.role || '', alt: req.body?.alt || '' });
+      const item = media.get(req.file.filename, req.baseUrl);
+      res.json({ url: item?.url || `${req.baseUrl}/uploads/${encodeURIComponent(req.file.filename)}`, item });
+    });
+  });
+
+  // --- Media library -----------------------------------------------------------
+  router.get('/media', blogAuth, (req, res) => {
+    res.json({ items: media.list(req.baseUrl), maxBytes: media.maxBytes });
+  });
+
+  router.post('/media', blogAuth, (req, res) => {
+    upload.array('files', 20)(req, res, (error) => {
+      if (error) return uploadErrorResponse(res, error);
+      const files = Array.isArray(req.files) ? req.files : [];
+      if (!files.length) return res.status(400).json({ message: 'No files uploaded' });
+      const items = [];
+      for (const file of files) {
+        media.register(file.filename, { uploadedBy: req.actor?.username || req.actor?.role || '', alt: req.body?.alt || '' });
+        const item = media.get(file.filename, req.baseUrl);
+        if (item) items.push(item);
+      }
+      res.status(201).json({ items });
+    });
+  });
+
+  router.patch('/media/:name', blogAuth, (req, res) => {
+    const result = media.update(req.params.name, { alt: req.body?.alt, rename: req.body?.rename });
+    if (!result.ok) {
+      const messages = { 'not-found': 'File not found', 'bad-name': 'Invalid file name (keep the same extension)', exists: 'A file with that name already exists' };
+      return res.status(result.reason === 'not-found' ? 404 : 400).json({ message: messages[result.reason] || 'Update failed' });
+    }
+    res.json({ item: media.get(result.name, req.baseUrl) });
+  });
+
+  router.delete('/media/:name', adminAuth, (req, res) => {
+    const result = media.remove(req.params.name);
+    if (!result.ok) return res.status(result.reason === 'not-found' ? 404 : 400).json({ message: 'Could not delete file' });
+    res.json({ ok: true });
   });
 
   router.get('/categories', adminAuth, (_req, res) => {
@@ -431,8 +567,103 @@ export default function createCmsRoutes({
     const lists = store.getAllLists().map((list) => ({
       ...list,
       count: store.queryLeads({ listId: list.id }).length,
+      // Frontend forms (Step 3 bindings) feeding this list.
+      forms: siteSeed.forms
+        .filter((form) => form.destination.type === 'list' && resolveListForForm(form)?.id === list.id)
+        .map((form) => ({ id: form.id, label: form.label, purpose: form.purpose, pages: form.pages })),
     }));
     res.json(lists);
+  });
+
+  // ---- Step 3 CMS hookup: site structure + bound frontend forms -------------
+
+  router.get('/site', adminAuth, (_req, res) => {
+    res.json(publicSiteSeed());
+  });
+
+  router.get('/pages', adminAuth, (_req, res) => {
+    res.json(siteSeed.pages);
+  });
+
+  router.get('/forms', adminAuth, (_req, res) => {
+    res.json(publicSiteSeed().forms);
+  });
+
+  router.get('/forms-runtime.js', (_req, res) => {
+    const success = {};
+    for (const form of siteSeed.forms) success[form.id] = successMessageFor(form, siteSeed.site.language);
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.send(formsRuntimeScript({ messages: { success, error: errorMessageFor(siteSeed.site.language) } }));
+  });
+
+  // Public: the site's own forms post here (JSON via runtime, urlencoded without JS).
+  router.post('/forms/:id/submit', express.urlencoded({ extended: false, limit: '200kb' }), async (req, res) => {
+    const form = siteSeed.forms.find((f) => f.id === String(req.params.id || ''));
+    const json = wantsJson(req);
+    const body = req.body || {};
+    const returnPath = safeReturnPath(body._cms_return || safeRefererPath(req.get('referer')), '/');
+    const fail = (status, message) => {
+      if (json) return res.status(status).json({ ok: false, message });
+      return res.redirect(303, `${returnPath}${returnPath.includes('?') ? '&' : '?'}cms-form=error`);
+    };
+    if (!form) return fail(404, 'Unknown form.');
+    if (looksLikeBot(body)) {
+      // Pretend success so bots learn nothing.
+      return json ? res.json({ ok: true, message: successMessageFor(form, siteSeed.site.language) }) : res.redirect(303, `${returnPath}?cms-form=ok&form=${encodeURIComponent(form.id)}`);
+    }
+    const { mapped, extra } = applyFieldMap(body, form);
+    const page = safeReturnPath(body._cms_page || body._cms_return, '');
+    let stored = null;
+    if (form.destination.type === 'list') {
+      if (!mapped.email) return fail(400, 'E-mail is required.');
+      const list = resolveListForForm(form) || store.ensureDefaultList();
+      const result = store.upsertLead({
+        ...mapped,
+        listId: list.id,
+        source: form.label || form.id,
+        formId: form.id,
+        language: mapped.language || siteSeed.site.language,
+        extra,
+      });
+      if (!result.ok) return fail(400, result.error || 'Could not save.');
+      stored = { kind: 'lead', id: result.lead.id, listId: list.id };
+      if (form.notify) forwardToHub(form, mapped, extra, page).catch(() => {});
+    } else {
+      const result = store.createSubmission({
+        formId: form.id,
+        formLabel: form.label,
+        purpose: form.purpose,
+        page,
+        ...mapped,
+        extra,
+      });
+      if (!result.ok) return fail(400, result.error || 'Could not save.');
+      stored = { kind: 'submission', id: result.submission.id };
+      // Inbox submissions still e-mail the client through the hub (existing pipe).
+      forwardToHub(form, mapped, extra, page)
+        .then((ok) => ok && store.updateSubmission(result.submission.id, { forwarded: true }))
+        .catch(() => {});
+    }
+    if (json) return res.status(201).json({ ok: true, ...stored, message: successMessageFor(form, siteSeed.site.language) });
+    return res.redirect(303, `${returnPath}${returnPath.includes('?') ? '&' : '?'}cms-form=ok&form=${encodeURIComponent(form.id)}`);
+  });
+
+  router.get('/submissions', adminAuth, (req, res) => {
+    const rows = store.querySubmissions({ formId: req.query.formId, unread: req.query.unread === 'true' });
+    res.json(rows.map(publicSubmission));
+  });
+
+  router.put('/submissions/:id', adminAuth, (req, res) => {
+    const result = store.updateSubmission(req.params.id, { read: req.body?.read === true });
+    if (!result.ok) return res.status(404).json({ message: result.error });
+    res.json(publicSubmission(result.submission));
+  });
+
+  router.delete('/submissions/:id', adminAuth, (req, res) => {
+    const result = store.deleteSubmission(req.params.id);
+    if (!result.ok) return res.status(404).json({ message: result.error });
+    res.status(204).end();
   });
 
   router.post('/lists', adminAuth, (req, res) => {
@@ -440,6 +671,41 @@ export default function createCmsRoutes({
     if (!result.ok) return res.status(400).json({ message: result.error });
     res.status(201).json(result.list);
   });
+
+  router.get('/email-templates', adminAuth, async (req, res) => {
+    const config = req.cmsConfig || (await fetchHubConfig());
+    res.json({
+      templates: emailTemplates.list({ seedAsoldi: shouldSeedAsoldiPresets(config) }),
+      mergeFields: mergeFieldsMeta(),
+    });
+  });
+
+  router.post('/email-templates', adminAuth, (req, res) => {
+    const result = emailTemplates.save(req.body || {});
+    if (!result.ok) return res.status(400).json({ message: result.error });
+    res.status(201).json({ template: result.template });
+  });
+
+  router.put('/email-templates/:id', adminAuth, (req, res) => {
+    const existing = emailTemplates.getById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Template not found' });
+    const result = emailTemplates.save({ ...existing, ...(req.body || {}), id: existing.id });
+    if (!result.ok) return res.status(400).json({ message: result.error });
+    res.json({ template: result.template });
+  });
+
+  router.delete('/email-templates/:id', adminAuth, (req, res) => {
+    const result = emailTemplates.delete(req.params.id);
+    if (!result.ok) return res.status(404).json({ message: result.error });
+    res.json({ ok: true });
+  });
+
+  router.post('/email-templates/import', adminAuth, (req, res) => {
+    const result = emailTemplates.importHtml(req.body || {});
+    if (!result.ok) return res.status(400).json({ message: result.error });
+    res.status(201).json({ template: result.template });
+  });
+
 
   router.get('/leads', adminAuth, (req, res) => {
     res.json(store.queryLeads(req.query || {}).map(publicLead));
